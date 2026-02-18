@@ -21,3 +21,9 @@ body.capture-mode {
 body.editor-mode {
   background: #1e1e2e;
 }
+
+/* Recording pulse animation */
+@keyframes pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.5; }
+}

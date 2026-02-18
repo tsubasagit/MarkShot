@@ -83,18 +83,9 @@ const s: Record<string, React.CSSProperties> = {
     background: '#00FFFF',
     color: '#0f0f1a',
   },
-  dangerBtn: {
-    background: '#FF0055',
-    color: '#fff',
-  },
   secondaryBtn: {
     background: '#2a2a4a',
     color: '#b0b0d0',
-  },
-  status: {
-    fontSize: 11,
-    padding: '4px 8px',
-    borderRadius: 4,
   },
   hint: {
     fontSize: 11,
@@ -106,13 +97,11 @@ const s: Record<string, React.CSSProperties> = {
 
 const SettingsPanel: React.FC<SettingsPanelProps> = ({ onClose }) => {
   const [localSavePath, setLocalSavePath] = useState('')
-  const [clientId, setClientId] = useState('')
-  const [clientSecret, setClientSecret] = useState('')
-  const [folderName, setFolderName] = useState('MarkShot')
-  const [isGoogleAuth, setIsGoogleAuth] = useState(false)
+  const [driveFolderId, setDriveFolderId] = useState('')
+  const [googleConnected, setGoogleConnected] = useState(false)
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
-  const [authLoading, setAuthLoading] = useState(false)
+  const [loggingIn, setLoggingIn] = useState(false)
   const [message, setMessage] = useState<{ text: string; error: boolean } | null>(null)
 
   useEffect(() => {
@@ -121,12 +110,13 @@ const SettingsPanel: React.FC<SettingsPanelProps> = ({ onClose }) => {
 
   const loadData = async () => {
     try {
-      const settings = await window.electronAPI.getSettings()
+      const [settings, connected] = await Promise.all([
+        window.electronAPI.getSettings(),
+        window.electronAPI.googleStatus(),
+      ])
       setLocalSavePath(settings.localSavePath)
-      setClientId(settings.googleDrive.clientId)
-      setClientSecret(settings.googleDrive.clientSecret)
-      setFolderName(settings.googleDrive.folderName)
-      setIsGoogleAuth(settings.googleDrive.isAuthenticated)
+      setDriveFolderId(settings.driveFolderId)
+      setGoogleConnected(connected)
     } catch {}
     setLoading(false)
   }
@@ -146,7 +136,7 @@ const SettingsPanel: React.FC<SettingsPanelProps> = ({ onClose }) => {
     try {
       await window.electronAPI.updateSettings({
         localSavePath,
-        googleDrive: { clientId, clientSecret, folderName },
+        driveFolderId,
       })
       showMessage('設定を保存しました')
     } catch (err: any) {
@@ -155,27 +145,22 @@ const SettingsPanel: React.FC<SettingsPanelProps> = ({ onClose }) => {
     setSaving(false)
   }
 
-  const handleGoogleAuth = async () => {
-    // Save credentials first
-    await window.electronAPI.updateSettings({
-      googleDrive: { clientId, clientSecret },
-    })
-
-    setAuthLoading(true)
+  const handleGoogleLogin = async () => {
+    setLoggingIn(true)
     try {
-      await window.electronAPI.authenticateGoogle()
-      setIsGoogleAuth(true)
-      showMessage('Google Drive に認証しました')
+      await window.electronAPI.googleLogin()
+      setGoogleConnected(true)
+      showMessage('Googleアカウントに接続しました')
     } catch (err: any) {
-      showMessage(`認証エラー: ${err.message}`, true)
+      showMessage(`ログイン失敗: ${err.message}`, true)
     }
-    setAuthLoading(false)
+    setLoggingIn(false)
   }
 
-  const handleGoogleDisconnect = async () => {
-    await window.electronAPI.clearGoogleAuth()
-    setIsGoogleAuth(false)
-    showMessage('Google Drive の認証を解除しました')
+  const handleGoogleLogout = async () => {
+    await window.electronAPI.googleLogout()
+    setGoogleConnected(false)
+    showMessage('Googleアカウントから切断しました')
   }
 
   if (loading) return null
@@ -219,64 +204,44 @@ const SettingsPanel: React.FC<SettingsPanelProps> = ({ onClose }) => {
         <div style={s.section}>
           <div style={s.sectionTitle}>Google Drive</div>
 
-          <label style={s.label}>Client ID</label>
-          <input
-            style={s.input}
-            value={clientId}
-            onChange={(e) => setClientId(e.target.value)}
-            placeholder="xxxx.apps.googleusercontent.com"
-          />
-
-          <label style={s.label}>Client Secret</label>
-          <input
-            style={s.input}
-            value={clientSecret}
-            onChange={(e) => setClientSecret(e.target.value)}
-            placeholder="GOCSPX-xxxx"
-            type="password"
-          />
-
-          <label style={s.label}>Drive フォルダ名</label>
-          <input
-            style={s.input}
-            value={folderName}
-            onChange={(e) => setFolderName(e.target.value)}
-          />
-
-          <div style={s.row}>
-            {isGoogleAuth ? (
+          <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 12 }}>
+            {googleConnected ? (
               <>
-                <span
-                  style={{
-                    ...s.status,
-                    background: 'rgba(57,255,20,0.15)',
-                    color: '#39FF14',
-                  }}
-                >
-                  認証済み
+                <span style={{ fontSize: 13, color: '#39FF14' }}>
+                  接続済み
                 </span>
                 <button
-                  style={{ ...s.btn, ...s.dangerBtn }}
-                  onClick={handleGoogleDisconnect}
+                  style={{ ...s.btn, ...s.secondaryBtn, fontSize: 11 }}
+                  onClick={handleGoogleLogout}
                 >
-                  認証を解除
+                  ログアウト
                 </button>
               </>
             ) : (
               <button
                 style={{ ...s.btn, ...s.primaryBtn }}
-                onClick={handleGoogleAuth}
-                disabled={authLoading || !clientId || !clientSecret}
+                onClick={handleGoogleLogin}
+                disabled={loggingIn}
               >
-                {authLoading ? '認証中...' : 'Google Drive に認証'}
+                {loggingIn ? 'ブラウザで認証中...' : 'Googleでログイン'}
               </button>
             )}
           </div>
 
+          <label style={s.label}>Google Drive フォルダID（任意）</label>
+          <input
+            style={s.input}
+            value={driveFolderId}
+            onChange={(e) => setDriveFolderId(e.target.value)}
+            placeholder="フォルダURLの末尾のID（空欄ならマイドライブ直下）"
+          />
+
           <div style={s.hint}>
-            Google Cloud Console で OAuth 2.0 クライアントID (デスクトップアプリ) を作成し、
-            Client ID と Client Secret を入力してください。
-            リダイレクトURI に <code style={{ color: '#00FFFF' }}>http://127.0.0.1</code> を追加してください。
+            「Googleでログイン」を押すとブラウザが開きます。Googleアカウントで認証すると、スクリーンショットをGoogle Driveに直接アップロードできます。<br /><br />
+            <strong style={{ color: '#8ab4c8' }}>フォルダIDの確認方法：</strong><br />
+            Google Drive で保存先フォルダを開き、URLの末尾がフォルダIDです。<br />
+            例: https://drive.google.com/drive/folders/<span style={{ color: '#00FFFF' }}>xxxxx</span> → 「xxxxx」の部分<br />
+            空欄の場合はマイドライブ直下に保存されます。
           </div>
         </div>
 

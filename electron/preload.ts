@@ -71,41 +71,71 @@ contextBridge.exposeInMainWorld('electronAPI', {
     ipcRenderer.send('image:copy', dataUrl)
   },
 
-  // Video
-  saveVideo: (data: Uint8Array): Promise<string> => {
-    return ipcRenderer.invoke('video:save', data)
-  },
-
   // GIF
   saveGif: (data: Uint8Array): Promise<string> => {
     return ipcRenderer.invoke('gif:save', data)
   },
+  startGifCapture: () => {
+    ipcRenderer.send('capture:start-gif')
+  },
+  sendGifRegion: (region: { x: number; y: number; w: number; h: number; scaleFactor: number }) => {
+    ipcRenderer.send('capture:gif-region-selected', region)
+  },
+  onGifRegionReady: (
+    callback: (region: { x: number; y: number; w: number; h: number; scaleFactor: number }) => void
+  ) => {
+    const handler = (
+      _event: Electron.IpcRendererEvent,
+      region: { x: number; y: number; w: number; h: number; scaleFactor: number }
+    ) => {
+      callback(region)
+    }
+    ipcRenderer.on('gif:start-with-region', handler)
+    return () => {
+      ipcRenderer.removeListener('gif:start-with-region', handler)
+    }
+  },
+
+  // Recording UI
+  showRecordingUI: (region: { x: number; y: number; w: number; h: number; scaleFactor: number }) => {
+    ipcRenderer.send('gif:show-recording-ui', region)
+  },
+  hideRecordingUI: () => {
+    ipcRenderer.send('gif:hide-recording-ui')
+  },
+  stopRecordingFromControl: () => {
+    ipcRenderer.send('gif:stop-from-control')
+  },
+  onGifStopRecording: (callback: () => void) => {
+    const handler = () => callback()
+    ipcRenderer.on('gif:stop-recording', handler)
+    return () => {
+      ipcRenderer.removeListener('gif:stop-recording', handler)
+    }
+  },
 
   // Google Drive
-  authenticateGoogle: (): Promise<boolean> => {
-    return ipcRenderer.invoke('google-drive:authenticate')
-  },
   uploadToGoogleDrive: (
     dataUrl: string
-  ): Promise<{ fileId: string; webViewLink: string }> => {
+  ): Promise<{ fileUrl: string }> => {
     return ipcRenderer.invoke('google-drive:upload', dataUrl)
   },
-  isGoogleAuthenticated: (): Promise<boolean> => {
-    return ipcRenderer.invoke('google-drive:is-authenticated')
+  googleLogin: (): Promise<boolean> => {
+    return ipcRenderer.invoke('google:login')
   },
-  clearGoogleAuth: (): Promise<boolean> => {
-    return ipcRenderer.invoke('google-drive:clear-auth')
+  googleLogout: (): Promise<boolean> => {
+    return ipcRenderer.invoke('google:logout')
+  },
+  googleStatus: (): Promise<boolean> => {
+    return ipcRenderer.invoke('google:status')
   },
 
   // Settings
   getSettings: (): Promise<{
     localSavePath: string
-    googleDrive: {
-      clientId: string
-      clientSecret: string
-      folderName: string
-      isAuthenticated: boolean
-    }
+    gasWebAppUrl: string
+    gasFolderId: string
+    driveFolderId: string
   }> => {
     return ipcRenderer.invoke('settings:get')
   },

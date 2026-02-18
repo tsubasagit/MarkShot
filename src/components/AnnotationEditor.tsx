@@ -56,23 +56,16 @@ const AnnotationEditor: React.FC<AnnotationEditorProps> = ({
   const [editingTextId, setEditingTextId] = useState<string | null>(null)
   const [statusMsg, setStatusMsg] = useState<{ text: string; error: boolean } | null>(null)
 
-  // Recording state
-  const [isRecording, setIsRecording] = useState(false)
-  const [recordingElapsed, setRecordingElapsed] = useState(0)
-  const recorderRef = useRef<{ recorder: MediaRecorder; stream: MediaStream } | null>(null)
-  const timerRef = useRef<number | null>(null)
-
   // GIF recording state
   const [isGifRecording, setIsGifRecording] = useState(false)
   const [gifElapsed, setGifElapsed] = useState(0)
+  const [gifFrameCount, setGifFrameCount] = useState(0)
+  const [gifPreparing, setGifPreparing] = useState(false)
+  const [gifEncoding, setGifEncoding] = useState(false)
+  const [gifPreviewUrl, setGifPreviewUrl] = useState<string | null>(null)
   const gifRef = useRef<{ stream: MediaStream; stop: () => void } | null>(null)
   const gifTimerRef = useRef<number | null>(null)
 
-  // Scroll capture state
-  const [isScrollCapturing, setIsScrollCapturing] = useState(false)
-  const [scrollElapsed, setScrollElapsed] = useState(0)
-  const scrollRef = useRef<{ stream: MediaStream; stop: () => void } | null>(null)
-  const scrollTimerRef = useRef<number | null>(null)
 
   const {
     annotations,
@@ -155,9 +148,7 @@ const AnnotationEditor: React.FC<AnnotationEditorProps> = ({
   // Cleanup recording timers on unmount
   useEffect(() => {
     return () => {
-      if (timerRef.current) clearInterval(timerRef.current)
       if (gifTimerRef.current) clearInterval(gifTimerRef.current)
-      if (scrollTimerRef.current) clearInterval(scrollTimerRef.current)
     }
   }, [])
 
@@ -171,6 +162,7 @@ const AnnotationEditor: React.FC<AnnotationEditorProps> = ({
           await window.electronAPI?.autoSave(dataUrl)
         }
       }
+      setGifPreviewUrl(null)
       console.log('[handleNewCapture] calling startCapture')
       window.electronAPI?.startCapture()
     } catch (err) {
@@ -178,102 +170,23 @@ const AnnotationEditor: React.FC<AnnotationEditorProps> = ({
     }
   }
 
-  // Video recording (manual stop)
-  const handleRecordVideo = async () => {
-    if (image) {
-      const dataUrl = exportImage()
-      if (dataUrl) {
-        await window.electronAPI?.autoSave(dataUrl)
-      }
-    }
-
-    window.electronAPI?.hideWindow()
-    await new Promise((r) => setTimeout(r, 500))
-
-    try {
-      const stream = await navigator.mediaDevices.getDisplayMedia({
-        video: true,
-        audio: false,
-      })
-
-      const mimeType = MediaRecorder.isTypeSupported('video/webm;codecs=vp9')
-        ? 'video/webm;codecs=vp9'
-        : 'video/webm'
-
-      const recorder = new MediaRecorder(stream, { mimeType })
-      const chunks: Blob[] = []
-
-      recorder.ondataavailable = (e) => {
-        if (e.data.size > 0) chunks.push(e.data)
-      }
-
-      recorder.onstop = async () => {
-        // Cleanup timer
-        if (timerRef.current) {
-          clearInterval(timerRef.current)
-          timerRef.current = null
-        }
-        setIsRecording(false)
-        setRecordingElapsed(0)
-        recorderRef.current = null
-
-        try {
-          const blob = new Blob(chunks, { type: 'video/webm' })
-          const arrayBuffer = await blob.arrayBuffer()
-          const result = await window.electronAPI.saveVideo(
-            new Uint8Array(arrayBuffer)
-          )
-          window.electronAPI?.showWindow()
-          showStatus(`動画を保存しました: ${result}`)
-        } catch (err: any) {
-          window.electronAPI?.showWindow()
-          showStatus(`保存エラー: ${err.message}`, true)
-        }
-      }
-
-      // Handle user stopping screen share from browser UI
-      stream.getVideoTracks()[0]?.addEventListener('ended', () => {
-        if (recorderRef.current?.recorder.state === 'recording') {
-          recorderRef.current.recorder.stop()
-        }
-      })
-
-      recorder.start(1000)
-      recorderRef.current = { recorder, stream }
-      setIsRecording(true)
-      setRecordingElapsed(0)
-      timerRef.current = window.setInterval(() => {
-        setRecordingElapsed((prev) => prev + 1)
-      }, 1000)
-
-      window.electronAPI?.showWindow()
-    } catch (err: any) {
-      window.electronAPI?.showWindow()
-      if (err.name !== 'NotAllowedError') {
-        showStatus(`録画エラー: ${err.message}`, true)
-      }
-    }
-  }
-
-  // Stop recording
-  const handleStopRecording = () => {
-    if (!recorderRef.current) return
-    const { recorder, stream } = recorderRef.current
-    if (recorder.state === 'recording') {
-      recorder.stop()
-    }
-    stream.getTracks().forEach((t) => t.stop())
-  }
-
-  // GIF recording
+  // GIF recording — start region selection via overlay
   const handleRecordGif = async () => {
     if (image) {
       const dataUrl = exportImage()
       if (dataUrl) await window.electronAPI?.autoSave(dataUrl)
     }
 
-    window.electronAPI?.hideWindow()
-    await new Promise((r) => setTimeout(r, 500))
+    setGifPreviewUrl(null)
+
+    // Open overlay for region selection (same UX as New screenshot)
+    window.electronAPI?.startGifCapture()
+  }
+
+  // Start recording with selected region
+  const startGifWithRegion = useCallback(async (region: { x: number; y: number; w: number; h: number; scaleFactor: number }) => {
+    setGifPreparing(true)
+    showStatus('GIF録画を準備中...')
 
     try {
       const stream = await navigator.mediaDevices.getDisplayMedia({
@@ -281,22 +194,40 @@ const AnnotationEditor: React.FC<AnnotationEditorProps> = ({
         audio: false,
       })
 
-      const videoTrack = stream.getVideoTracks()[0]
-      const settings = videoTrack.getSettings()
-      const srcW = settings.width || 800
-      const srcH = settings.height || 600
+      setGifPreparing(false)
 
-      // Scale down if needed (max 800px wide)
+      // 3秒カウントダウン
+      for (let i = 3; i > 0; i--) {
+        showStatus(`GIF録画開始まで ${i} 秒...`)
+        await new Promise((r) => setTimeout(r, 1000))
+      }
+
+      window.electronAPI?.hideWindow()
+      await new Promise((r) => setTimeout(r, 300))
+
+      const videoTrack = stream.getVideoTracks()[0]
+      const trackSettings = videoTrack.getSettings()
+      const srcW = trackSettings.width || 800
+      const srcH = trackSettings.height || 600
+
+      // Output size = selected region, scaled down if needed (max 800px wide)
       const MAX_W = 800
-      const scale = srcW > MAX_W ? MAX_W / srcW : 1
-      const w = Math.round(srcW * scale)
-      const h = Math.round(srcH * scale)
+      const outScale = region.w > MAX_W ? MAX_W / region.w : 1
+      const w = Math.round(region.w * outScale)
+      const h = Math.round(region.h * outScale)
 
       const video = document.createElement('video')
       video.srcObject = stream
       video.muted = true
       await video.play()
 
+      // Full-screen capture canvas (to draw full frame first)
+      const fullCanvas = document.createElement('canvas')
+      fullCanvas.width = srcW
+      fullCanvas.height = srcH
+      const fullCtx = fullCanvas.getContext('2d')!
+
+      // Cropped output canvas
       const canvas = document.createElement('canvas')
       canvas.width = w
       canvas.height = h
@@ -315,15 +246,28 @@ const AnnotationEditor: React.FC<AnnotationEditorProps> = ({
           stopGif()
           return
         }
-        ctx.drawImage(video, 0, 0, w, h)
+        // Draw full screen to full canvas
+        fullCtx.drawImage(video, 0, 0, srcW, srcH)
+        // Crop selected region to output canvas
+        ctx.drawImage(
+          fullCanvas,
+          region.x, region.y, region.w, region.h,
+          0, 0, w, h
+        )
         const imageData = ctx.getImageData(0, 0, w, h)
         const palette = quantize(imageData.data as unknown as Uint8ClampedArray, 256)
         const index = applyPalette(imageData.data as unknown as Uint8ClampedArray, palette)
         gif.writeFrame(index, w, h, { palette, delay: frameDelay })
         frameCount++
+        setGifFrameCount(frameCount)
       }, frameDelay)
 
+      let stopped = false
       const stopGif = async () => {
+        if (stopped) return
+        stopped = true
+        cleanupStopListener?.()
+
         clearInterval(captureInterval)
         if (gifTimerRef.current) {
           clearInterval(gifTimerRef.current)
@@ -331,21 +275,57 @@ const AnnotationEditor: React.FC<AnnotationEditorProps> = ({
         }
         setIsGifRecording(false)
         setGifElapsed(0)
+        setGifFrameCount(0)
         gifRef.current = null
 
         video.pause()
         video.srcObject = null
         stream.getTracks().forEach((t) => t.stop())
 
+        window.electronAPI?.hideRecordingUI()
+        window.electronAPI?.showWindow()
+        setGifEncoding(true)
+        showStatus('GIFをエンコード中...')
+
         try {
           gif.finish()
           const bytes = gif.bytes()
+
+          // GIF プレビュー用 data URL を生成
+          const gifBlob = new Blob([new Uint8Array(bytes)], { type: 'image/gif' })
+          const gifDataUrl = await new Promise<string>((resolve) => {
+            const r = new FileReader()
+            r.onload = () => resolve(r.result as string)
+            r.readAsDataURL(gifBlob)
+          })
+
           const result = await window.electronAPI.saveGif(bytes)
-          window.electronAPI?.showWindow()
-          showStatus(`GIFを保存しました: ${result}`)
+          setGifEncoding(false)
+
+          // プレビュー表示
+          setGifPreviewUrl(gifDataUrl)
+
+          // Google Drive にも自動アップロード
+          try {
+            const connected = await window.electronAPI.googleStatus()
+            if (connected) {
+              const driveResult = await window.electronAPI.uploadToGoogleDrive(gifDataUrl)
+              if (driveResult?.fileUrl) {
+                const { copyTextToClipboard } = await import('../utils/clipboard')
+                copyTextToClipboard(driveResult.fileUrl)
+                showStatus(`GIF saved & uploaded — URL copied`)
+              } else {
+                showStatus(`GIF saved: ${result}`)
+              }
+            } else {
+              showStatus(`GIF saved: ${result}`)
+            }
+          } catch {
+            showStatus(`GIF saved: ${result}`)
+          }
         } catch (err: any) {
-          window.electronAPI?.showWindow()
-          showStatus(`GIF保存エラー: ${err.message}`, true)
+          setGifEncoding(false)
+          showStatus(`GIF save error: ${err.message}`, true)
         }
       }
 
@@ -353,140 +333,40 @@ const AnnotationEditor: React.FC<AnnotationEditorProps> = ({
         stopGif()
       })
 
+      // Listen for stop from recording control popup
+      const cleanupStopListener = window.electronAPI?.onGifStopRecording(() => {
+        stopGif()
+      })
+
       gifRef.current = { stream, stop: stopGif }
       setIsGifRecording(true)
       setGifElapsed(0)
+      setGifFrameCount(0)
       gifTimerRef.current = window.setInterval(() => {
         setGifElapsed((prev) => prev + 1)
       }, 1000)
 
-      window.electronAPI?.showWindow()
+      // Show recording overlay + control popup (instead of main window)
+      window.electronAPI?.showRecordingUI(region)
     } catch (err: any) {
+      setGifPreparing(false)
       window.electronAPI?.showWindow()
       if (err.name !== 'NotAllowedError') {
         showStatus(`GIF録画エラー: ${err.message}`, true)
       }
     }
-  }
+  }, [exportImage, image])
+
+  // Listen for GIF region selection from overlay
+  useEffect(() => {
+    const cleanup = window.electronAPI?.onGifRegionReady((region) => {
+      startGifWithRegion(region)
+    })
+    return cleanup
+  }, [startGifWithRegion])
 
   const handleStopGif = () => {
     gifRef.current?.stop()
-  }
-
-  // Scroll capture
-  const handleScrollCapture = async () => {
-    if (image) {
-      const dataUrl = exportImage()
-      if (dataUrl) await window.electronAPI?.autoSave(dataUrl)
-    }
-
-    window.electronAPI?.hideWindow()
-    await new Promise((r) => setTimeout(r, 500))
-
-    try {
-      const stream = await navigator.mediaDevices.getDisplayMedia({
-        video: true,
-        audio: false,
-      })
-
-      const videoTrack = stream.getVideoTracks()[0]
-      const settings = videoTrack.getSettings()
-      const srcW = settings.width || 800
-      const srcH = settings.height || 600
-
-      const video = document.createElement('video')
-      video.srcObject = stream
-      video.muted = true
-      await video.play()
-
-      const canvas = document.createElement('canvas')
-      canvas.width = srcW
-      canvas.height = srcH
-      const ctx = canvas.getContext('2d')!
-
-      const capturedFrames: ImageData[] = []
-      const INTERVAL = 400 // ms
-
-      const captureInterval = window.setInterval(() => {
-        ctx.drawImage(video, 0, 0, srcW, srcH)
-        const imageData = ctx.getImageData(0, 0, srcW, srcH)
-        capturedFrames.push(imageData)
-      }, INTERVAL)
-
-      const stopScroll = async () => {
-        clearInterval(captureInterval)
-        if (scrollTimerRef.current) {
-          clearInterval(scrollTimerRef.current)
-          scrollTimerRef.current = null
-        }
-        setIsScrollCapturing(false)
-        setScrollElapsed(0)
-        scrollRef.current = null
-
-        video.pause()
-        video.srcObject = null
-        stream.getTracks().forEach((t) => t.stop())
-
-        window.electronAPI?.showWindow()
-
-        if (capturedFrames.length === 0) {
-          showStatus('フレームがキャプチャされませんでした', true)
-          return
-        }
-
-        showStatus('スクロール画像を合成中...')
-
-        try {
-          const { removeDuplicateFrames, stitchFrames } = await import('../utils/scrollStitch')
-          const unique = removeDuplicateFrames(capturedFrames)
-          if (unique.length === 0) {
-            showStatus('有効なフレームがありません', true)
-            return
-          }
-          const dataUrl = stitchFrames(unique)
-          if (dataUrl) {
-            // Load stitched image into editor
-            const img = new window.Image()
-            img.onload = () => {
-              setImage(img)
-              const maxW = window.innerWidth - 40
-              const maxH = window.innerHeight - 160
-              const scale = Math.min(maxW / img.width, maxH / img.height, 1)
-              setStageSize({
-                width: Math.round(img.width * scale),
-                height: Math.round(img.height * scale),
-              })
-              showStatus(`スクロールキャプチャ完了 (${unique.length}フレーム合成)`)
-            }
-            img.src = dataUrl
-          }
-        } catch (err: any) {
-          showStatus(`合成エラー: ${err.message}`, true)
-        }
-      }
-
-      videoTrack.addEventListener('ended', () => {
-        stopScroll()
-      })
-
-      scrollRef.current = { stream, stop: stopScroll }
-      setIsScrollCapturing(true)
-      setScrollElapsed(0)
-      scrollTimerRef.current = window.setInterval(() => {
-        setScrollElapsed((prev) => prev + 1)
-      }, 1000)
-
-      window.electronAPI?.showWindow()
-    } catch (err: any) {
-      window.electronAPI?.showWindow()
-      if (err.name !== 'NotAllowedError') {
-        showStatus(`スクロールキャプチャエラー: ${err.message}`, true)
-      }
-    }
-  }
-
-  const handleStopScrollCapture = () => {
-    scrollRef.current?.stop()
   }
 
   const getPointerPosition = (): { x: number; y: number } | null => {
@@ -656,6 +536,18 @@ const AnnotationEditor: React.FC<AnnotationEditorProps> = ({
       }
     }
 
+    setDrawStart(null)
+    // 描画完了後、自動で選択ツールに戻す
+    setActiveTool('select')
+  }
+
+  // 右クリックで即座に選択ツールに戻す
+  const handleContextMenu = (e: Konva.KonvaEventObject<PointerEvent>) => {
+    e.evt.preventDefault()
+    setActiveTool('select')
+    setSelectedId(null)
+    setIsDrawing(false)
+    setCurrentPenPoints([])
     setDrawStart(null)
   }
 
@@ -1049,16 +941,7 @@ const AnnotationEditor: React.FC<AnnotationEditorProps> = ({
     badge: 'pointer',
   }
 
-  const anyRecording = isRecording || isGifRecording || isScrollCapturing
-
-  // Auto-start capture when no image is loaded (and no image is being loaded)
-  const hasTriggeredCapture = useRef(false)
-  useEffect(() => {
-    if (!image && !imageDataUrl && !hasTriggeredCapture.current) {
-      hasTriggeredCapture.current = true
-      window.electronAPI?.startCapture()
-    }
-  }, [image, imageDataUrl])
+  const anyRecording = isGifRecording || gifPreparing || gifEncoding
 
   // ---- Editor with image ----
   return (
@@ -1082,93 +965,46 @@ const AnnotationEditor: React.FC<AnnotationEditorProps> = ({
           justifyContent: 'center',
         }}
       >
-        {/* Capture / Record icon buttons */}
-        <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
+        {/* Capture / Record buttons */}
+        <div style={{
+          display: 'flex',
+          gap: 2,
+          alignItems: 'center',
+          background: '#1a1a2e',
+          borderRadius: 8,
+          border: '1px solid #2a2a4a',
+          padding: '4px 6px',
+        }}>
+          {/* New screenshot */}
           <button
             onClick={handleNewCapture}
             disabled={anyRecording}
             style={{
-              width: 42,
-              height: 42,
-              border: '2px solid transparent',
+              width: 38,
+              height: 38,
+              border: 'none',
               borderRadius: 6,
               background: 'transparent',
               color: '#b0b0d0',
               cursor: anyRecording ? 'default' : 'pointer',
               display: 'flex',
+              flexDirection: 'column',
               alignItems: 'center',
               justifyContent: 'center',
               transition: 'all 0.15s',
               opacity: anyRecording ? 0.3 : 1,
+              gap: 1,
             }}
             title="新規スクリーンショット"
           >
-            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-              <path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/>
-              <circle cx="12" cy="13" r="4"/>
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+              <line x1="12" y1="5" x2="12" y2="19"/>
+              <line x1="5" y1="12" x2="19" y2="12"/>
             </svg>
+            <span style={{ fontSize: 8, lineHeight: 1 }}>New</span>
           </button>
 
-          {/* Video recording button */}
-          {!isRecording ? (
-            <button
-              onClick={handleRecordVideo}
-              disabled={anyRecording}
-              style={{
-                width: 42,
-                height: 42,
-                border: '2px solid transparent',
-                borderRadius: 6,
-                background: 'transparent',
-                color: '#b0b0d0',
-                cursor: anyRecording ? 'default' : 'pointer',
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                transition: 'all 0.15s',
-                opacity: anyRecording ? 0.3 : 1,
-              }}
-              title="画面録画を開始"
-            >
-              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                <circle cx="12" cy="12" r="10"/>
-                <circle cx="12" cy="12" r="4" fill="currentColor" stroke="none"/>
-              </svg>
-            </button>
-          ) : (
-            <>
-              <button
-                onClick={handleStopRecording}
-                style={{
-                  width: 42,
-                  height: 42,
-                  border: '2px solid #ff1744',
-                  borderRadius: 6,
-                  background: 'rgba(255,23,68,0.15)',
-                  color: '#ff1744',
-                  cursor: 'pointer',
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  transition: 'all 0.15s',
-                }}
-                title="録画を停止"
-              >
-                <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor">
-                  <rect x="5" y="5" width="14" height="14" rx="2"/>
-                </svg>
-              </button>
-              <span style={{
-                color: '#ff1744',
-                fontSize: 12,
-                fontWeight: 700,
-                fontFamily: 'monospace',
-                minWidth: 28,
-              }}>
-                {recordingElapsed}s
-              </span>
-            </>
-          )}
+          <div style={{ width: 1, height: 24, background: '#2a2a4a' }} />
 
           {/* GIF recording button */}
           {!isGifRecording ? (
@@ -1176,122 +1012,58 @@ const AnnotationEditor: React.FC<AnnotationEditorProps> = ({
               onClick={handleRecordGif}
               disabled={anyRecording}
               style={{
-                width: 42,
-                height: 42,
-                border: '2px solid transparent',
+                width: 38,
+                height: 38,
+                border: 'none',
                 borderRadius: 6,
-                background: 'transparent',
-                color: '#b0b0d0',
+                background: gifPreparing ? 'rgba(255,145,0,0.15)' : 'transparent',
+                color: gifPreparing ? '#ff9100' : '#b0b0d0',
                 cursor: anyRecording ? 'default' : 'pointer',
                 display: 'flex',
+                flexDirection: 'column',
                 alignItems: 'center',
                 justifyContent: 'center',
                 transition: 'all 0.15s',
-                opacity: anyRecording ? 0.3 : 1,
-                fontSize: 13,
-                fontWeight: 700,
-                fontFamily: 'monospace',
+                opacity: (anyRecording && !gifPreparing) ? 0.3 : 1,
+                gap: 1,
               }}
-              title="GIF録画を開始"
+              title="画面録画（GIF）"
             >
-              GIF
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
+                <circle cx="12" cy="12" r="9"/>
+                <circle cx="12" cy="12" r="3.5" fill="currentColor" stroke="none"/>
+              </svg>
+              <span style={{ fontSize: 8, lineHeight: 1 }}>{gifPreparing ? 'Prep' : gifEncoding ? 'Encode' : 'Record'}</span>
             </button>
           ) : (
-            <>
-              <button
-                onClick={handleStopGif}
-                style={{
-                  width: 42,
-                  height: 42,
-                  border: '2px solid #ff9100',
-                  borderRadius: 6,
-                  background: 'rgba(255,145,0,0.15)',
-                  color: '#ff9100',
-                  cursor: 'pointer',
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  transition: 'all 0.15s',
-                }}
-                title="GIF録画を停止"
-              >
-                <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor">
-                  <rect x="5" y="5" width="14" height="14" rx="2"/>
-                </svg>
-              </button>
-              <span style={{
-                color: '#ff9100',
-                fontSize: 12,
-                fontWeight: 700,
-                fontFamily: 'monospace',
-                minWidth: 28,
-              }}>
+            <button
+              onClick={handleStopGif}
+              style={{
+                width: 38,
+                height: 38,
+                border: 'none',
+                borderRadius: 6,
+                background: 'rgba(255,23,68,0.15)',
+                color: '#ff1744',
+                cursor: 'pointer',
+                display: 'flex',
+                flexDirection: 'column',
+                alignItems: 'center',
+                justifyContent: 'center',
+                gap: 1,
+                animation: 'pulse 1.5s infinite',
+              }}
+              title="録画を停止"
+            >
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor">
+                <rect x="5" y="5" width="14" height="14" rx="2"/>
+              </svg>
+              <span style={{ fontSize: 8, lineHeight: 1, fontFamily: 'monospace', fontWeight: 700 }}>
                 {gifElapsed}s
               </span>
-            </>
+            </button>
           )}
 
-          {/* Scroll capture button */}
-          {!isScrollCapturing ? (
-            <button
-              onClick={handleScrollCapture}
-              disabled={anyRecording}
-              style={{
-                width: 42,
-                height: 42,
-                border: '2px solid transparent',
-                borderRadius: 6,
-                background: 'transparent',
-                color: '#b0b0d0',
-                cursor: anyRecording ? 'default' : 'pointer',
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                transition: 'all 0.15s',
-                opacity: anyRecording ? 0.3 : 1,
-              }}
-              title="スクロールキャプチャ"
-            >
-              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                <rect x="4" y="2" width="16" height="20" rx="2"/>
-                <line x1="12" y1="6" x2="12" y2="14"/>
-                <polyline points="8 12 12 16 16 12"/>
-              </svg>
-            </button>
-          ) : (
-            <>
-              <button
-                onClick={handleStopScrollCapture}
-                style={{
-                  width: 42,
-                  height: 42,
-                  border: '2px solid #00e676',
-                  borderRadius: 6,
-                  background: 'rgba(0,230,118,0.15)',
-                  color: '#00e676',
-                  cursor: 'pointer',
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  transition: 'all 0.15s',
-                }}
-                title="スクロールキャプチャを停止"
-              >
-                <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor">
-                  <rect x="5" y="5" width="14" height="14" rx="2"/>
-                </svg>
-              </button>
-              <span style={{
-                color: '#00e676',
-                fontSize: 12,
-                fontWeight: 700,
-                fontFamily: 'monospace',
-                minWidth: 28,
-              }}>
-                {scrollElapsed}s
-              </span>
-            </>
-          )}
         </div>
         <Toolbar
           activeTool={activeTool}
@@ -1312,7 +1084,7 @@ const AnnotationEditor: React.FC<AnnotationEditorProps> = ({
         />
       </div>
 
-      {/* Canvas */}
+      {/* Canvas / GIF Preview */}
       <div
         style={{
           flex: 1,
@@ -1322,35 +1094,68 @@ const AnnotationEditor: React.FC<AnnotationEditorProps> = ({
           overflow: 'auto',
         }}
       >
-        <div
-          style={{
-            border: '1px solid #2a2a4a',
-            borderRadius: 4,
-            overflow: 'hidden',
-            cursor: cursorMap[activeTool],
-          }}
-        >
-          <Stage
-            ref={stageRef}
-            width={stageSize.width}
-            height={stageSize.height}
-            onMouseDown={handleStageMouseDown}
-            onMouseMove={handleStageMouseMove}
-            onMouseUp={handleStageMouseUp}
+        {gifPreviewUrl ? (
+          <div style={{ position: 'relative', display: 'inline-block' }}>
+            <img
+              src={gifPreviewUrl}
+              alt="GIF Preview"
+              style={{
+                maxWidth: '100%',
+                maxHeight: 'calc(100vh - 180px)',
+                border: '1px solid #2a2a4a',
+                borderRadius: 4,
+              }}
+            />
+            <button
+              onClick={() => setGifPreviewUrl(null)}
+              style={{
+                position: 'absolute',
+                top: 8,
+                right: 8,
+                padding: '4px 10px',
+                border: 'none',
+                borderRadius: 4,
+                background: 'rgba(0,0,0,0.7)',
+                color: '#b0b0d0',
+                fontSize: 11,
+                cursor: 'pointer',
+              }}
+            >
+              Close
+            </button>
+          </div>
+        ) : (
+          <div
+            style={{
+              border: '1px solid #2a2a4a',
+              borderRadius: 4,
+              overflow: 'hidden',
+              cursor: cursorMap[activeTool],
+            }}
           >
-            <Layer>
-              <KonvaImage
-                image={image ?? undefined}
-                width={stageSize.width}
-                height={stageSize.height}
-              />
-            </Layer>
-            <Layer>
-              {annotations.map(renderAnnotation)}
-              {renderDrawPreview()}
-            </Layer>
-          </Stage>
-        </div>
+            <Stage
+              ref={stageRef}
+              width={stageSize.width}
+              height={stageSize.height}
+              onMouseDown={handleStageMouseDown}
+              onMouseMove={handleStageMouseMove}
+              onMouseUp={handleStageMouseUp}
+              onContextMenu={handleContextMenu}
+            >
+              <Layer>
+                <KonvaImage
+                  image={image ?? undefined}
+                  width={stageSize.width}
+                  height={stageSize.height}
+                />
+              </Layer>
+              <Layer>
+                {annotations.map(renderAnnotation)}
+                {renderDrawPreview()}
+              </Layer>
+            </Stage>
+          </div>
+        )}
       </div>
 
       {/* Bottom panel */}

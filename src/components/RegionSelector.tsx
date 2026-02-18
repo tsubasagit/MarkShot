@@ -7,7 +7,11 @@ interface Region {
   endY: number
 }
 
-const RegionSelector: React.FC = () => {
+interface RegionSelectorProps {
+  mode?: 'screenshot' | 'gif'
+}
+
+const RegionSelector: React.FC<RegionSelectorProps> = ({ mode = 'screenshot' }) => {
   const canvasRef = useRef<HTMLCanvasElement>(null)
   const [screenshotImage, setScreenshotImage] = useState<HTMLImageElement | null>(null)
   const [displayInfo, setDisplayInfo] = useState<{
@@ -106,6 +110,7 @@ const RegionSelector: React.FC = () => {
   }, [draw])
 
   const handleMouseDown = (e: React.MouseEvent) => {
+    if (e.button === 2) return // 右クリックは無視
     setIsDragging(true)
     setStartPos({ x: e.clientX, y: e.clientY })
     setRegion({
@@ -114,6 +119,14 @@ const RegionSelector: React.FC = () => {
       endX: e.clientX,
       endY: e.clientY,
     })
+  }
+
+  // 右クリックでキャプチャをキャンセル
+  const handleContextMenu = (e: React.MouseEvent) => {
+    e.preventDefault()
+    setIsDragging(false)
+    setRegion(null)
+    window.electronAPI?.cancelCapture()
   }
 
   const handleMouseMove = (e: React.MouseEvent) => {
@@ -140,7 +153,20 @@ const RegionSelector: React.FC = () => {
       return
     }
 
-    // Crop selected region
+    if (mode === 'gif') {
+      // GIF mode: send region coordinates (in physical pixels) instead of cropped image
+      const scaleFactor = displayInfo?.scaleFactor || 1
+      window.electronAPI?.sendGifRegion({
+        x: Math.round(x * scaleFactor),
+        y: Math.round(y * scaleFactor),
+        w: Math.round(w * scaleFactor),
+        h: Math.round(h * scaleFactor),
+        scaleFactor,
+      })
+      return
+    }
+
+    // Screenshot mode: crop and send image
     const cropCanvas = document.createElement('canvas')
     const scaleX = screenshotImage.width / window.innerWidth
     const scaleY = screenshotImage.height / window.innerHeight
@@ -181,6 +207,7 @@ const RegionSelector: React.FC = () => {
       onMouseDown={handleMouseDown}
       onMouseMove={handleMouseMove}
       onMouseUp={handleMouseUp}
+      onContextMenu={handleContextMenu}
     />
   )
 }

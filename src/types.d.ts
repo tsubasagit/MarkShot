@@ -31,29 +31,34 @@ declare global {
       // Image operations
       copyImage: (dataUrl: string) => void
 
-      // Video
-      saveVideo: (data: Uint8Array) => Promise<string>
-
       // GIF
       saveGif: (data: Uint8Array) => Promise<string>
+      startGifCapture: () => void
+      sendGifRegion: (region: { x: number; y: number; w: number; h: number; scaleFactor: number }) => void
+      onGifRegionReady: (
+        callback: (region: { x: number; y: number; w: number; h: number; scaleFactor: number }) => void
+      ) => () => void
+
+      // Recording UI
+      showRecordingUI: (region: { x: number; y: number; w: number; h: number; scaleFactor: number }) => void
+      hideRecordingUI: () => void
+      stopRecordingFromControl: () => void
+      onGifStopRecording: (callback: () => void) => () => void
 
       // Google Drive
-      authenticateGoogle: () => Promise<boolean>
       uploadToGoogleDrive: (
         dataUrl: string
-      ) => Promise<{ fileId: string; webViewLink: string }>
-      isGoogleAuthenticated: () => Promise<boolean>
-      clearGoogleAuth: () => Promise<boolean>
+      ) => Promise<{ fileUrl: string }>
+      googleLogin: () => Promise<boolean>
+      googleLogout: () => Promise<boolean>
+      googleStatus: () => Promise<boolean>
 
       // Settings
       getSettings: () => Promise<{
         localSavePath: string
-        googleDrive: {
-          clientId: string
-          clientSecret: string
-          folderName: string
-          isAuthenticated: boolean
-        }
+        gasWebAppUrl: string
+        gasFolderId: string
+        driveFolderId: string
       }>
       updateSettings: (updates: Record<string, unknown>) => Promise<boolean>
       browseFolder: () => Promise<string | null>

@@ -1,266 +1,242 @@
-import { BrowserWindow } from 'electron'
+import { shell } from 'electron'
 import http from 'http'
+import crypto from 'crypto'
 import { loadSettings, saveSettings } from './settings'
 
-const SCOPES = ['https://www.googleapis.com/auth/drive.file']
-const REDIRECT_PORT_START = 43210
+// Google OAuth 2.0 PKCE flow for desktop apps
+// Set GOOGLE_CLIENT_ID and GOOGLE_CLIENT_SECRET in .env
+const CLIENT_ID = process.env.GOOGLE_CLIENT_ID || ''
+const CLIENT_SECRET = process.env.GOOGLE_CLIENT_SECRET || ''
+const SCOPES = 'https://www.googleapis.com/auth/drive.file'
+const AUTH_ENDPOINT = 'https://accounts.google.com/o/oauth2/v2/auth'
+const TOKEN_ENDPOINT = 'https://oauth2.googleapis.com/token'
 
-function findAvailablePort(start: number): Promise<number> {
-  return new Promise((resolve) => {
-    const server = http.createServer()
-    server.listen(start, '127.0.0.1', () => {
-      server.close(() => resolve(start))
-    })
-    server.on('error', () => {
-      findAvailablePort(start + 1).then(resolve)
-    })
-  })
+function generateCodeVerifier(): string {
+  return crypto.randomBytes(32).toString('base64url')
 }
 
-export async function authenticateGoogle(): Promise<boolean> {
-  const settings = loadSettings()
-  const { clientId, clientSecret } = settings.googleDrive
+function generateCodeChallenge(verifier: string): string {
+  return crypto.createHash('sha256').update(verifier).digest('base64url')
+}
 
-  if (!clientId || !clientSecret) {
-    throw new Error(
-      'Google API の Client ID と Client Secret を設定画面で入力してください。'
-    )
-  }
-
-  const port = await findAvailablePort(REDIRECT_PORT_START)
-  const redirectUri = `http://127.0.0.1:${port}/callback`
-
+/**
+ * Start OAuth PKCE flow:
+ * 1. Generate PKCE code verifier/challenge
+ * 2. Start local HTTP server to receive callback
+ * 3. Open browser for Google login
+ * 4. Exchange authorization code for tokens
+ * 5. Save tokens to settings
+ */
+export function startOAuthFlow(): Promise<void> {
   return new Promise((resolve, reject) => {
-    let authWindow: BrowserWindow | null = null
-    let server: http.Server | null = null
+    const codeVerifier = generateCodeVerifier()
+    const codeChallenge = generateCodeChallenge(codeVerifier)
 
-    const cleanup = () => {
-      authWindow?.close()
-      authWindow = null
-      server?.close()
-      server = null
-    }
+    const server = http.createServer()
 
-    server = http.createServer(async (req, res) => {
-      const url = new URL(req.url || '', `http://127.0.0.1:${port}`)
-
-      if (url.pathname === '/callback') {
-        const code = url.searchParams.get('code')
-        const error = url.searchParams.get('error')
-
-        res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' })
-
-        if (error) {
-          res.end(
-            '<html><body style="background:#1a1a2e;color:#fff;font-family:sans-serif;display:flex;align-items:center;justify-content:center;height:100vh"><div><h2>認証がキャンセルされました</h2><p>このウィンドウを閉じてください。</p></div></body></html>'
-          )
-          cleanup()
-          reject(new Error('認証がキャンセルされました'))
-          return
-        }
-
-        if (code) {
-          try {
-            const tokenResponse = await fetch(
-              'https://oauth2.googleapis.com/token',
-              {
-                method: 'POST',
-                headers: {
-                  'Content-Type': 'application/x-www-form-urlencoded',
-                },
-                body: new URLSearchParams({
-                  code,
-                  client_id: clientId,
-                  client_secret: clientSecret,
-                  redirect_uri: redirectUri,
-                  grant_type: 'authorization_code',
-                }),
-              }
-            )
-
-            const tokens = await tokenResponse.json()
-
-            if (tokens.error) {
-              throw new Error(tokens.error_description || tokens.error)
-            }
-
-            settings.googleDrive.accessToken = tokens.access_token
-            settings.googleDrive.refreshToken =
-              tokens.refresh_token || settings.googleDrive.refreshToken
-            settings.googleDrive.tokenExpiry =
-              Date.now() + tokens.expires_in * 1000
-            saveSettings(settings)
-
-            res.end(
-              '<html><body style="background:#1a1a2e;color:#39FF14;font-family:sans-serif;display:flex;align-items:center;justify-content:center;height:100vh"><div><h2>認証成功!</h2><p>このウィンドウを閉じてください。</p></div></body></html>'
-            )
-            cleanup()
-            resolve(true)
-          } catch (err: any) {
-            res.end(
-              `<html><body style="background:#1a1a2e;color:#FF0055;font-family:sans-serif;display:flex;align-items:center;justify-content:center;height:100vh"><div><h2>認証エラー</h2><p>${err.message}</p></div></body></html>`
-            )
-            cleanup()
-            reject(err)
-          }
-        }
+    // Find a random available port
+    server.listen(0, '127.0.0.1', () => {
+      const address = server.address()
+      if (!address || typeof address === 'string') {
+        server.close()
+        reject(new Error('Failed to start local server'))
+        return
       }
+
+      const port = address.port
+      const redirectUri = `http://127.0.0.1:${port}`
+
+      const params = new URLSearchParams({
+        client_id: CLIENT_ID,
+        redirect_uri: redirectUri,
+        response_type: 'code',
+        scope: SCOPES,
+        code_challenge: codeChallenge,
+        code_challenge_method: 'S256',
+        access_type: 'offline',
+        prompt: 'consent',
+      })
+
+      const authUrl = `${AUTH_ENDPOINT}?${params.toString()}`
+
+      // Timeout after 5 minutes
+      const timeout = setTimeout(() => {
+        server.close()
+        reject(new Error('認証がタイムアウトしました'))
+      }, 5 * 60 * 1000)
+
+      server.on('request', async (req, res) => {
+        try {
+          const url = new URL(req.url || '/', `http://127.0.0.1:${port}`)
+          const code = url.searchParams.get('code')
+          const error = url.searchParams.get('error')
+
+          if (error) {
+            res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' })
+            res.end('<html><body><h2>認証がキャンセルされました。このタブを閉じてください。</h2></body></html>')
+            clearTimeout(timeout)
+            server.close()
+            reject(new Error(`認証エラー: ${error}`))
+            return
+          }
+
+          if (!code) {
+            res.writeHead(400, { 'Content-Type': 'text/html; charset=utf-8' })
+            res.end('<html><body><h2>認証コードが見つかりません。</h2></body></html>')
+            return
+          }
+
+          // Exchange code for tokens
+          const tokenResponse = await fetch(TOKEN_ENDPOINT, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+            body: new URLSearchParams({
+              client_id: CLIENT_ID,
+              client_secret: CLIENT_SECRET,
+              code,
+              code_verifier: codeVerifier,
+              grant_type: 'authorization_code',
+              redirect_uri: redirectUri,
+            }).toString(),
+          })
+
+          if (!tokenResponse.ok) {
+            const errText = await tokenResponse.text()
+            throw new Error(`トークン取得失敗: ${errText}`)
+          }
+
+          const tokens = await tokenResponse.json()
+
+          // Save tokens
+          const settings = loadSettings()
+          settings.googleAccessToken = tokens.access_token
+          settings.googleRefreshToken = tokens.refresh_token || settings.googleRefreshToken
+          settings.googleTokenExpiry = Date.now() + tokens.expires_in * 1000
+          saveSettings(settings)
+
+          res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' })
+          res.end('<html><body style="font-family:sans-serif;text-align:center;padding:60px"><h2>MarkShot に接続しました！</h2><p>このタブを閉じてアプリに戻ってください。</p></body></html>')
+
+          clearTimeout(timeout)
+          server.close()
+          resolve()
+        } catch (err) {
+          res.writeHead(500, { 'Content-Type': 'text/html; charset=utf-8' })
+          res.end('<html><body><h2>エラーが発生しました。</h2></body></html>')
+          clearTimeout(timeout)
+          server.close()
+          reject(err)
+        }
+      })
+
+      // Open browser
+      shell.openExternal(authUrl)
     })
 
-    server.listen(port, '127.0.0.1', () => {
-      const authUrl =
-        `https://accounts.google.com/o/oauth2/v2/auth?` +
-        `client_id=${encodeURIComponent(clientId)}` +
-        `&redirect_uri=${encodeURIComponent(redirectUri)}` +
-        `&response_type=code` +
-        `&scope=${encodeURIComponent(SCOPES.join(' '))}` +
-        `&access_type=offline` +
-        `&prompt=consent`
-
-      authWindow = new BrowserWindow({
-        width: 500,
-        height: 650,
-        title: 'Google Drive 認証',
-        autoHideMenuBar: true,
-      })
-
-      authWindow.loadURL(authUrl)
-      authWindow.on('closed', () => {
-        authWindow = null
-        server?.close()
-        server = null
-      })
+    server.on('error', (err) => {
+      reject(new Error(`ローカルサーバー起動失敗: ${err.message}`))
     })
   })
 }
 
+/**
+ * Get a valid access token, refreshing if expired
+ */
 async function getValidAccessToken(): Promise<string> {
   const settings = loadSettings()
 
-  if (!settings.googleDrive.refreshToken) {
-    throw new Error('Google Drive に未認証です。設定画面から認証してください。')
+  if (!settings.googleRefreshToken) {
+    throw new Error('Googleに接続されていません。設定画面からログインしてください。')
   }
 
-  // Return if token is still valid (with 5min buffer)
-  if (
-    settings.googleDrive.accessToken &&
-    settings.googleDrive.tokenExpiry > Date.now() + 300000
-  ) {
-    return settings.googleDrive.accessToken
+  // Return existing token if still valid (with 60s buffer)
+  if (settings.googleAccessToken && settings.googleTokenExpiry > Date.now() + 60_000) {
+    return settings.googleAccessToken
   }
 
   // Refresh the token
-  const response = await fetch('https://oauth2.googleapis.com/token', {
+  const response = await fetch(TOKEN_ENDPOINT, {
     method: 'POST',
     headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
     body: new URLSearchParams({
-      client_id: settings.googleDrive.clientId,
-      client_secret: settings.googleDrive.clientSecret,
-      refresh_token: settings.googleDrive.refreshToken,
+      client_id: CLIENT_ID,
+      client_secret: CLIENT_SECRET,
       grant_type: 'refresh_token',
-    }),
+      refresh_token: settings.googleRefreshToken,
+    }).toString(),
   })
 
-  const tokens = await response.json()
-
-  if (tokens.error) {
-    settings.googleDrive.refreshToken = ''
-    settings.googleDrive.accessToken = ''
-    saveSettings(settings)
-    throw new Error('トークンが無効です。再認証してください。')
+  if (!response.ok) {
+    const errText = await response.text()
+    // If refresh token is revoked, clear tokens
+    if (response.status === 400 || response.status === 401) {
+      settings.googleAccessToken = ''
+      settings.googleRefreshToken = ''
+      settings.googleTokenExpiry = 0
+      saveSettings(settings)
+      throw new Error('Googleの認証が無効です。再度ログインしてください。')
+    }
+    throw new Error(`トークン更新失敗: ${errText}`)
   }
 
-  settings.googleDrive.accessToken = tokens.access_token
-  settings.googleDrive.tokenExpiry = Date.now() + tokens.expires_in * 1000
+  const tokens = await response.json()
+  settings.googleAccessToken = tokens.access_token
+  settings.googleTokenExpiry = Date.now() + tokens.expires_in * 1000
+  if (tokens.refresh_token) {
+    settings.googleRefreshToken = tokens.refresh_token
+  }
   saveSettings(settings)
 
   return tokens.access_token
 }
 
-async function findOrCreateFolder(
-  accessToken: string,
-  folderName: string
-): Promise<string> {
-  const settings = loadSettings()
-
-  // Check cached folder ID
-  if (settings.googleDrive.folderId) {
-    const checkRes = await fetch(
-      `https://www.googleapis.com/drive/v3/files/${settings.googleDrive.folderId}?fields=id,trashed`,
-      { headers: { Authorization: `Bearer ${accessToken}` } }
-    )
-    if (checkRes.ok) {
-      const data = await checkRes.json()
-      if (!data.trashed) return settings.googleDrive.folderId
-    }
-  }
-
-  // Search for existing folder
-  const query = `name='${folderName}' and mimeType='application/vnd.google-apps.folder' and trashed=false`
-  const searchRes = await fetch(
-    `https://www.googleapis.com/drive/v3/files?q=${encodeURIComponent(query)}&fields=files(id,name)`,
-    { headers: { Authorization: `Bearer ${accessToken}` } }
-  )
-  const searchData = await searchRes.json()
-
-  if (searchData.files && searchData.files.length > 0) {
-    settings.googleDrive.folderId = searchData.files[0].id
-    saveSettings(settings)
-    return searchData.files[0].id
-  }
-
-  // Create folder
-  const createRes = await fetch(
-    'https://www.googleapis.com/drive/v3/files',
-    {
-      method: 'POST',
-      headers: {
-        Authorization: `Bearer ${accessToken}`,
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({
-        name: folderName,
-        mimeType: 'application/vnd.google-apps.folder',
-      }),
-    }
-  )
-  const createData = await createRes.json()
-
-  settings.googleDrive.folderId = createData.id
-  saveSettings(settings)
-  return createData.id
-}
-
+/**
+ * Upload image to Google Drive using multipart upload API
+ */
 export async function uploadToGoogleDrive(
   dataUrl: string
-): Promise<{ fileId: string; webViewLink: string }> {
+): Promise<{ fileUrl: string }> {
   const accessToken = await getValidAccessToken()
   const settings = loadSettings()
-  const folderName = settings.googleDrive.folderName || 'MarkShot'
-  const folderId = await findOrCreateFolder(accessToken, folderName)
 
+  // Detect file type from data URL
+  const isGif = dataUrl.startsWith('data:image/gif')
+  const mimeType = isGif ? 'image/gif' : 'image/png'
+  const ext = isGif ? 'gif' : 'png'
+
+  // Generate filename
   const now = new Date()
   const ts = `${now.getFullYear()}${String(now.getMonth() + 1).padStart(2, '0')}${String(now.getDate()).padStart(2, '0')}_${String(now.getHours()).padStart(2, '0')}${String(now.getMinutes()).padStart(2, '0')}${String(now.getSeconds()).padStart(2, '0')}`
-  const fileName = `snap_${ts}.png`
+  const fileName = `${isGif ? 'gif' : 'snap'}_${ts}.${ext}`
 
-  const base64Data = dataUrl.replace(/^data:image\/png;base64,/, '')
-  const buffer = Buffer.from(base64Data, 'base64')
+  // Prepare file content
+  const base64Data = dataUrl.replace(/^data:image\/[a-z]+;base64,/, '')
 
-  const boundary = 'markshot_boundary_' + Date.now()
-  const metadata = JSON.stringify({
-    name: fileName,
-    parents: [folderId],
-  })
+  // Multipart upload metadata
+  const metadata: Record<string, unknown> = { name: fileName }
+  if (settings.driveFolderId) {
+    metadata.parents = [settings.driveFolderId]
+  }
 
-  const multipartBody = Buffer.concat([
-    Buffer.from(
-      `--${boundary}\r\nContent-Type: application/json; charset=UTF-8\r\n\r\n${metadata}\r\n--${boundary}\r\nContent-Type: image/png\r\n\r\n`
-    ),
-    buffer,
-    Buffer.from(`\r\n--${boundary}--`),
-  ])
+  const boundary = `markshot_${crypto.randomBytes(16).toString('hex')}`
+  const metadataStr = JSON.stringify(metadata)
 
-  const uploadRes = await fetch(
+  // Build multipart body
+  const bodyParts = [
+    `--${boundary}\r\n`,
+    'Content-Type: application/json; charset=UTF-8\r\n\r\n',
+    metadataStr,
+    `\r\n--${boundary}\r\n`,
+    `Content-Type: ${mimeType}\r\n`,
+    'Content-Transfer-Encoding: base64\r\n\r\n',
+    base64Data,
+    `\r\n--${boundary}--`,
+  ]
+
+  const body = Buffer.concat(bodyParts.map(p => Buffer.from(p, 'utf-8')))
+
+  // Upload to Drive API
+  const uploadResponse = await fetch(
     'https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart&fields=id,webViewLink',
     {
       method: 'POST',
@@ -268,28 +244,51 @@ export async function uploadToGoogleDrive(
         Authorization: `Bearer ${accessToken}`,
         'Content-Type': `multipart/related; boundary=${boundary}`,
       },
-      body: multipartBody,
+      body,
     }
   )
 
-  if (!uploadRes.ok) {
-    const errText = await uploadRes.text()
+  if (!uploadResponse.ok) {
+    const errText = await uploadResponse.text()
     throw new Error(`アップロード失敗: ${errText}`)
   }
 
-  return await uploadRes.json()
+  const file = await uploadResponse.json()
+
+  // Set sharing permission: anyone with link can view
+  await fetch(
+    `https://www.googleapis.com/drive/v3/files/${file.id}/permissions`,
+    {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${accessToken}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        role: 'reader',
+        type: 'anyone',
+      }),
+    }
+  )
+
+  return { fileUrl: file.webViewLink || `https://drive.google.com/file/d/${file.id}/view` }
 }
 
-export function isAuthenticated(): boolean {
+/**
+ * Clear stored tokens (logout)
+ */
+export function logoutGoogle(): void {
   const settings = loadSettings()
-  return !!settings.googleDrive.refreshToken
-}
-
-export function clearAuth(): void {
-  const settings = loadSettings()
-  settings.googleDrive.refreshToken = ''
-  settings.googleDrive.accessToken = ''
-  settings.googleDrive.tokenExpiry = 0
-  settings.googleDrive.folderId = ''
+  settings.googleAccessToken = ''
+  settings.googleRefreshToken = ''
+  settings.googleTokenExpiry = 0
   saveSettings(settings)
+}
+
+/**
+ * Check if Google account is connected
+ */
+export function isGoogleConnected(): boolean {
+  const settings = loadSettings()
+  return !!settings.googleRefreshToken
 }

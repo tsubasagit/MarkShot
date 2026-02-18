@@ -70,30 +70,27 @@ const SharePanel: React.FC<SharePanelProps> = ({ onExportImage }) => {
   }
 
   const handleDriveSave = async () => {
+    // Check connection status first
+    try {
+      const connected = await window.electronAPI?.googleStatus()
+      if (!connected) {
+        showStatus('Googleに未接続です。設定画面からログインしてください。', true)
+        return
+      }
+    } catch {
+      showStatus('接続状態の確認に失敗しました。', true)
+      return
+    }
+
     const dataUrl = onExportImage()
     if (!dataUrl) return
 
     setUploading(true)
     try {
-      // Check if authenticated
-      const isAuth = await window.electronAPI?.isGoogleAuthenticated()
-
-      if (!isAuth) {
-        // Try to authenticate first
-        try {
-          await window.electronAPI?.authenticateGoogle()
-        } catch (authErr: any) {
-          showStatus(`認証エラー: ${authErr.message}`, true)
-          setUploading(false)
-          return
-        }
-      }
-
-      // Upload to Google Drive
       const result = await window.electronAPI?.uploadToGoogleDrive(dataUrl)
-      if (result) {
-        copyTextToClipboard(result.webViewLink)
-        showStatus('Google Drive に保存 — URLをコピー済み', false, result.webViewLink)
+      if (result?.fileUrl) {
+        copyTextToClipboard(result.fileUrl)
+        showStatus('Google Drive に保存 — URLをコピー済み', false, result.fileUrl)
       }
     } catch (err: any) {
       showStatus(`保存失敗: ${err.message}`, true)
@@ -121,7 +118,7 @@ const SharePanel: React.FC<SharePanelProps> = ({ onExportImage }) => {
             <rect x="9" y="9" width="13" height="13" rx="2" ry="2"/>
             <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/>
           </svg>
-          コピー
+          Copy
         </button>
 
         <button
@@ -130,7 +127,7 @@ const SharePanel: React.FC<SharePanelProps> = ({ onExportImage }) => {
           disabled={uploading}
           title="Google Drive に保存"
         >
-          {uploading ? '保存中...' : 'GoogleDriveSave'}
+          {uploading ? '保存中...' : 'Google Drive'}
         </button>
 
         <button

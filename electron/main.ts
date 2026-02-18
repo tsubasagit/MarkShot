@@ -14,15 +14,12 @@ import {
 import path from 'path'
 import fs from 'fs'
 import { loadSettings, saveSettings } from './settings'
-import {
-  authenticateGoogle,
-  uploadToGoogleDrive,
-  isAuthenticated,
-  clearAuth,
-} from './google-drive'
+import { uploadToGoogleDrive, startOAuthFlow, logoutGoogle, isGoogleConnected } from './google-drive'
 
 let mainWindow: BrowserWindow | null = null
 let overlayWindow: BrowserWindow | null = null
+let recordingOverlayWindow: BrowserWindow | null = null
+let recordingControlWindow: BrowserWindow | null = null
 let tray: Tray | null = null
 let pendingScreenshot: {
   dataUrl: string
@@ -53,7 +50,7 @@ function createMainWindow() {
   mainWindow = new BrowserWindow({
     width: 1100,
     height: 750,
-    show: true,
+    show: false,
     frame: true,
     title: 'MarkShot',
     resizable: true,
@@ -90,17 +87,28 @@ function createMainWindow() {
   mainWindow.on('close', (e) => {
     if (mainWindow?.isVisible()) {
       e.preventDefault()
-      // Request renderer to auto-save, then hide
+      // Optimization: Hide immediately for perceived speed
+      mainWindow?.hide()
+      // Request renderer to auto-save in background
       mainWindow?.webContents.send('auto-save-request')
-      // Fallback: hide the window after 3 seconds even if auto-save doesn't respond
-      setTimeout(() => {
-        mainWindow?.hide()
-      }, 3000)
+    }
+  })
+
+  // Security: Block new windows/tabs from being created
+  mainWindow.webContents.setWindowOpenHandler(() => {
+    return { action: 'deny' }
+  })
+
+  mainWindow.webContents.on('will-navigate', (event, url) => {
+    const parsedUrl = new URL(url)
+    // Allow navigation only to local pages or dev server
+    if (parsedUrl.origin !== 'file://' && !url.startsWith(process.env.VITE_DEV_SERVER_URL || '')) {
+      event.preventDefault()
     }
   })
 }
 
-function createOverlayWindow() {
+function createOverlayWindow(mode: 'screenshot' | 'gif' = 'screenshot') {
   if (overlayWindow) {
     overlayWindow.close()
     overlayWindow = null
@@ -120,6 +128,7 @@ function createOverlayWindow() {
     skipTaskbar: true,
     resizable: false,
     fullscreen: false,
+    show: false,
     webPreferences: {
       preload: PRELOAD,
       contextIsolation: true,
@@ -129,9 +138,15 @@ function createOverlayWindow() {
 
   overlayWindow.setIgnoreMouseEvents(false)
 
+  // ページ読み込み完了で即表示
+  overlayWindow.once('ready-to-show', () => {
+    overlayWindow?.show()
+  })
+
+  const hash = mode === 'gif' ? '#/capture-gif' : '#/capture'
   const url = process.env.VITE_DEV_SERVER_URL
-    ? `${process.env.VITE_DEV_SERVER_URL}#/capture`
-    : `file://${path.join(DIST, 'index.html')}#/capture`
+    ? `${process.env.VITE_DEV_SERVER_URL}${hash}`
+    : `file://${path.join(DIST, 'index.html')}${hash}`
 
   overlayWindow.loadURL(url)
 
@@ -176,11 +191,14 @@ function createTray() {
   tray.on('double-click', () => startCapture())
 }
 
-async function startCapture() {
-  console.log('[startCapture] called')
+async function startCapture(mode: 'screenshot' | 'gif' = 'screenshot') {
   try {
-    mainWindow?.hide()
-    await new Promise((r) => setTimeout(r, 300))
+    const wasVisible = mainWindow?.isVisible()
+    if (wasVisible) {
+      mainWindow?.hide()
+      // ウィンドウが見えていた場合のみ短い待機（画面から消えるのを待つ）
+      await new Promise((r) => setTimeout(r, 100))
+    }
 
     const primaryDisplay = screen.getPrimaryDisplay()
     const { width, height } = primaryDisplay.size
@@ -204,7 +222,7 @@ async function startCapture() {
         scaleFactor,
       }
 
-      createOverlayWindow()
+      createOverlayWindow(mode)
     }
   } catch (err) {
     console.error('Failed to capture screen:', err)
@@ -248,11 +266,17 @@ ipcMain.on('capture:region-selected', (_event, regionData: string) => {
   mainWindow?.show()
   mainWindow?.focus()
 
-  setTimeout(() => {
+  // ウィンドウ表示後にすぐ画像を送る（readyならすぐ、未readyなら待つ）
+  const sendImage = () => {
     if (pendingEditorImage) {
       mainWindow?.webContents.send('editor:open', pendingEditorImage)
     }
-  }, 300)
+  }
+  if (mainWindow?.webContents.isLoading()) {
+    mainWindow?.webContents.once('did-finish-load', sendImage)
+  } else {
+    sendImage()
+  }
 })
 
 ipcMain.on('editor:request-image', () => {
@@ -269,6 +293,147 @@ ipcMain.on('capture:cancel', () => {
   mainWindow?.show()
 })
 
+// ---- IPC: GIF Capture (region selection) ----
+
+ipcMain.on('capture:start-gif', () => {
+  startCapture('gif')
+})
+
+ipcMain.on(
+  'capture:gif-region-selected',
+  (_event, region: { x: number; y: number; w: number; h: number; scaleFactor: number }) => {
+    overlayWindow?.close()
+    overlayWindow = null
+
+    if (!mainWindow) {
+      createMainWindow()
+    }
+
+    mainWindow?.setSize(1100, 750)
+    mainWindow?.center()
+    mainWindow?.show()
+    mainWindow?.focus()
+
+    const sendRegion = () => {
+      mainWindow?.webContents.send('gif:start-with-region', region)
+    }
+    if (mainWindow?.webContents.isLoading()) {
+      mainWindow?.webContents.once('did-finish-load', sendRegion)
+    } else {
+      sendRegion()
+    }
+  }
+)
+
+// ---- IPC: Recording UI (overlay + control popup) ----
+
+ipcMain.on(
+  'gif:show-recording-ui',
+  (_event, region: { x: number; y: number; w: number; h: number; scaleFactor: number }) => {
+    const primaryDisplay = screen.getPrimaryDisplay()
+    const { width: screenW, height: screenH } = primaryDisplay.size
+    const sf = region.scaleFactor
+
+    // Full-screen click-through overlay
+    recordingOverlayWindow = new BrowserWindow({
+      x: 0,
+      y: 0,
+      width: screenW,
+      height: screenH,
+      transparent: true,
+      frame: false,
+      alwaysOnTop: true,
+      skipTaskbar: true,
+      resizable: false,
+      show: false,
+      webPreferences: {
+        preload: PRELOAD,
+        contextIsolation: true,
+        nodeIntegration: false,
+      },
+    })
+    recordingOverlayWindow.setIgnoreMouseEvents(true)
+
+    const overlayHash = `#/recording-overlay/${region.x}/${region.y}/${region.w}/${region.h}/${region.scaleFactor}`
+    const overlayUrl = process.env.VITE_DEV_SERVER_URL
+      ? `${process.env.VITE_DEV_SERVER_URL}${overlayHash}`
+      : `file://${path.join(DIST, 'index.html')}${overlayHash}`
+
+    recordingOverlayWindow.loadURL(overlayUrl)
+    recordingOverlayWindow.once('ready-to-show', () => {
+      recordingOverlayWindow?.show()
+    })
+    recordingOverlayWindow.on('closed', () => {
+      recordingOverlayWindow = null
+    })
+
+    // Small control popup — position outside recording region
+    const controlW = 200
+    const controlH = 50
+    const cssX = Math.round(region.x / sf)
+    const cssY = Math.round(region.y / sf)
+    const cssW = Math.round(region.w / sf)
+    const cssH = Math.round(region.h / sf)
+
+    let controlX = cssX
+    let controlY = cssY + cssH + 10
+    if (controlY + controlH > screenH) {
+      controlY = cssY - controlH - 10
+    }
+    if (controlY < 0) {
+      controlX = cssX + cssW + 10
+      controlY = cssY
+    }
+    controlX = Math.max(0, Math.min(controlX, screenW - controlW))
+    controlY = Math.max(0, Math.min(controlY, screenH - controlH))
+
+    recordingControlWindow = new BrowserWindow({
+      x: controlX,
+      y: controlY,
+      width: controlW,
+      height: controlH,
+      transparent: true,
+      frame: false,
+      alwaysOnTop: true,
+      skipTaskbar: true,
+      resizable: false,
+      show: false,
+      webPreferences: {
+        preload: PRELOAD,
+        contextIsolation: true,
+        nodeIntegration: false,
+      },
+    })
+
+    const controlUrl = process.env.VITE_DEV_SERVER_URL
+      ? `${process.env.VITE_DEV_SERVER_URL}#/recording-control`
+      : `file://${path.join(DIST, 'index.html')}#/recording-control`
+
+    recordingControlWindow.loadURL(controlUrl)
+    recordingControlWindow.once('ready-to-show', () => {
+      recordingControlWindow?.show()
+    })
+    recordingControlWindow.on('closed', () => {
+      recordingControlWindow = null
+    })
+  }
+)
+
+ipcMain.on('gif:hide-recording-ui', () => {
+  recordingOverlayWindow?.close()
+  recordingOverlayWindow = null
+  recordingControlWindow?.close()
+  recordingControlWindow = null
+})
+
+ipcMain.on('gif:stop-from-control', () => {
+  mainWindow?.webContents.send('gif:stop-recording')
+  recordingOverlayWindow?.close()
+  recordingOverlayWindow = null
+  recordingControlWindow?.close()
+  recordingControlWindow = null
+})
+
 // ---- IPC: Auto-save ----
 
 ipcMain.handle(
@@ -280,7 +445,8 @@ ipcMain.handle(
       const filePath = path.join(folder, fileName)
 
       const base64Data = dataUrl.replace(/^data:image\/png;base64,/, '')
-      fs.writeFileSync(filePath, Buffer.from(base64Data, 'base64'))
+      // Use async writing for better performance
+      await fs.promises.writeFile(filePath, Buffer.from(base64Data, 'base64'))
       return filePath
     } catch (err) {
       console.error('Auto-save failed:', err)
@@ -290,7 +456,8 @@ ipcMain.handle(
 )
 
 ipcMain.on('auto-save-complete', () => {
-  mainWindow?.hide()
+  // Window is already hidden in 'close' event handler for speed
+  // Just log or do nothing
 })
 
 // ---- IPC: Window control ----
@@ -319,7 +486,7 @@ ipcMain.handle(
     const folder = getLocalSaveFolder()
     const fileName = `video_${generateTimestamp()}.webm`
     const filePath = path.join(folder, fileName)
-    fs.writeFileSync(filePath, Buffer.from(data))
+    await fs.promises.writeFile(filePath, Buffer.from(data))
     return filePath
   }
 )
@@ -332,44 +499,35 @@ ipcMain.handle(
     const folder = getLocalSaveFolder()
     const fileName = `gif_${generateTimestamp()}.gif`
     const filePath = path.join(folder, fileName)
-    fs.writeFileSync(filePath, Buffer.from(data))
+    await fs.promises.writeFile(filePath, Buffer.from(data))
     return filePath
   }
 )
 
-// ---- IPC: Google Drive ----
-
-ipcMain.handle('google-drive:authenticate', async () => {
-  return await authenticateGoogle()
-})
+// ---- IPC: Google Drive (OAuth + Drive API) ----
 
 ipcMain.handle('google-drive:upload', async (_event, dataUrl: string) => {
   return await uploadToGoogleDrive(dataUrl)
 })
 
-ipcMain.handle('google-drive:is-authenticated', () => {
-  return isAuthenticated()
+ipcMain.handle('google:login', async () => {
+  await startOAuthFlow()
+  return true
 })
 
-ipcMain.handle('google-drive:clear-auth', () => {
-  clearAuth()
+ipcMain.handle('google:logout', () => {
+  logoutGoogle()
   return true
+})
+
+ipcMain.handle('google:status', () => {
+  return isGoogleConnected()
 })
 
 // ---- IPC: Settings ----
 
 ipcMain.handle('settings:get', () => {
-  const settings = loadSettings()
-  // Don't send tokens to renderer
-  return {
-    localSavePath: settings.localSavePath,
-    googleDrive: {
-      clientId: settings.googleDrive.clientId,
-      clientSecret: settings.googleDrive.clientSecret,
-      folderName: settings.googleDrive.folderName,
-      isAuthenticated: !!settings.googleDrive.refreshToken,
-    },
-  }
+  return loadSettings()
 })
 
 ipcMain.handle(
@@ -378,27 +536,23 @@ ipcMain.handle(
     _event,
     updates: {
       localSavePath?: string
-      googleDrive?: {
-        clientId?: string
-        clientSecret?: string
-        folderName?: string
-      }
+      gasWebAppUrl?: string
+      gasFolderId?: string
+      driveFolderId?: string
     }
   ) => {
     const settings = loadSettings()
     if (updates.localSavePath !== undefined) {
       settings.localSavePath = updates.localSavePath
     }
-    if (updates.googleDrive) {
-      if (updates.googleDrive.clientId !== undefined) {
-        settings.googleDrive.clientId = updates.googleDrive.clientId
-      }
-      if (updates.googleDrive.clientSecret !== undefined) {
-        settings.googleDrive.clientSecret = updates.googleDrive.clientSecret
-      }
-      if (updates.googleDrive.folderName !== undefined) {
-        settings.googleDrive.folderName = updates.googleDrive.folderName
-      }
+    if (updates.gasWebAppUrl !== undefined) {
+      settings.gasWebAppUrl = updates.gasWebAppUrl
+    }
+    if (updates.gasFolderId !== undefined) {
+      settings.gasFolderId = updates.gasFolderId
+    }
+    if (updates.driveFolderId !== undefined) {
+      settings.driveFolderId = updates.driveFolderId
     }
     saveSettings(settings)
     return true
@@ -437,6 +591,9 @@ if (!gotTheLock) {
     globalShortcut.register('Ctrl+Shift+S', () => {
       startCapture()
     })
+
+    // 起動直後にキャプチャを開始（メインウィンドウのReact読み込みを待たない）
+    startCapture()
   })
 
   app.on('will-quit', () => {

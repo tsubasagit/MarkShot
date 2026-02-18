@@ -4,15 +4,12 @@ import fs from 'fs'
 
 export interface AppSettings {
   localSavePath: string
-  googleDrive: {
-    clientId: string
-    clientSecret: string
-    refreshToken: string
-    accessToken: string
-    tokenExpiry: number
-    folderId: string
-    folderName: string
-  }
+  gasWebAppUrl: string
+  gasFolderId: string
+  driveFolderId: string
+  googleAccessToken: string
+  googleRefreshToken: string
+  googleTokenExpiry: number
 }
 
 let settingsPath = ''
@@ -27,15 +24,12 @@ function getSettingsPath(): string {
 function getDefaultSettings(): AppSettings {
   return {
     localSavePath: path.join(app.getPath('desktop'), 'MarkShot'),
-    googleDrive: {
-      clientId: '',
-      clientSecret: '',
-      refreshToken: '',
-      accessToken: '',
-      tokenExpiry: 0,
-      folderId: '',
-      folderName: 'MarkShot',
-    },
+    gasWebAppUrl: '',
+    gasFolderId: '',
+    driveFolderId: '',
+    googleAccessToken: '',
+    googleRefreshToken: '',
+    googleTokenExpiry: 0,
   }
 }
 
@@ -45,11 +39,7 @@ export function loadSettings(): AppSettings {
     if (fs.existsSync(p)) {
       const data = JSON.parse(fs.readFileSync(p, 'utf-8'))
       const defaults = getDefaultSettings()
-      return {
-        ...defaults,
-        ...data,
-        googleDrive: { ...defaults.googleDrive, ...data.googleDrive },
-      }
+      return { ...defaults, ...data }
     }
   } catch {}
   return getDefaultSettings()
