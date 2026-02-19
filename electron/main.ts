@@ -17,17 +17,19 @@ import { loadSettings, saveSettings } from './settings'
 import { uploadToGoogleDrive, startOAuthFlow, logoutGoogle, isGoogleConnected } from './google-drive'
 
 let mainWindow: BrowserWindow | null = null
-let overlayWindow: BrowserWindow | null = null
+let overlayWindows: BrowserWindow[] = []
 let recordingOverlayWindow: BrowserWindow | null = null
 let recordingControlWindow: BrowserWindow | null = null
 let tray: Tray | null = null
-let pendingScreenshot: {
+let activeDisplay: Electron.Display | null = null
+let pendingScreenshots: Map<number, {
   dataUrl: string
   width: number
   height: number
   scaleFactor: number
-} | null = null
-let pendingEditorImage: string | null = null
+}> = new Map()
+let overlayReadyWaitingCount = 0
+let firstMinimizeNotified = false
 
 const DIST = path.join(__dirname, '../dist')
 const PRELOAD = path.join(__dirname, 'preload.js')
@@ -62,17 +64,18 @@ function createMainWindow() {
     },
   })
 
-  // Remove default menu bar
   Menu.setApplicationMenu(null)
 
-  // Auto-select screen for getDisplayMedia (no picker dialog for video recording)
   mainWindow.webContents.session.setDisplayMediaRequestHandler(
     (_request, callback) => {
       desktopCapturer
         .getSources({ types: ['screen'] })
         .then((sources) => {
           if (sources.length > 0) {
-            callback({ video: sources[0] })
+            const target = activeDisplay
+              ? sources.find((s) => s.display_id === String(activeDisplay!.id)) || sources[0]
+              : sources[0]
+            callback({ video: target })
           }
         })
     }
@@ -85,41 +88,50 @@ function createMainWindow() {
   }
 
   mainWindow.on('close', (e) => {
-    if (mainWindow?.isVisible()) {
+    if (mainWindow && !mainWindow.isDestroyed() && mainWindow.isVisible()) {
       e.preventDefault()
-      // Optimization: Hide immediately for perceived speed
-      mainWindow?.hide()
-      // Request renderer to auto-save in background
-      mainWindow?.webContents.send('auto-save-request')
+      mainWindow.hide()
+      mainWindow.webContents.send('auto-save-request')
+      if (!firstMinimizeNotified && tray) {
+        tray.displayBalloon({
+          title: 'MarkShot',
+          content: 'トレイに常駐しています。ダブルクリックでキャプチャ、右クリックでメニュー。',
+          iconType: 'info',
+        })
+        firstMinimizeNotified = true
+      }
     }
   })
 
-  // Security: Block new windows/tabs from being created
   mainWindow.webContents.setWindowOpenHandler(() => {
     return { action: 'deny' }
   })
 
   mainWindow.webContents.on('will-navigate', (event, url) => {
     const parsedUrl = new URL(url)
-    // Allow navigation only to local pages or dev server
     if (parsedUrl.origin !== 'file://' && !url.startsWith(process.env.VITE_DEV_SERVER_URL || '')) {
       event.preventDefault()
     }
   })
 }
 
-function createOverlayWindow(mode: 'screenshot' | 'gif' = 'screenshot') {
-  if (overlayWindow) {
-    overlayWindow.close()
-    overlayWindow = null
-  }
+function closeAllOverlays() {
+  overlayWindows.forEach(win => {
+    if (win && !win.isDestroyed()) {
+      win.close()
+    }
+  })
+  overlayWindows = []
+  pendingScreenshots.clear()
+  overlayReadyWaitingCount = 0
+}
 
-  const primaryDisplay = screen.getPrimaryDisplay()
-  const { width, height } = primaryDisplay.size
+function createOverlayWindow(display: Electron.Display, mode: 'screenshot' | 'gif' = 'screenshot') {
+  const { x, y, width, height } = display.bounds
 
-  overlayWindow = new BrowserWindow({
-    x: 0,
-    y: 0,
+  const win = new BrowserWindow({
+    x,
+    y,
     width,
     height,
     transparent: true,
@@ -136,28 +148,26 @@ function createOverlayWindow(mode: 'screenshot' | 'gif' = 'screenshot') {
     },
   })
 
-  overlayWindow.setIgnoreMouseEvents(false)
+  win.setIgnoreMouseEvents(false)
 
-  // ページ読み込み完了で即表示
-  overlayWindow.once('ready-to-show', () => {
-    overlayWindow?.show()
-  })
-
-  const hash = mode === 'gif' ? '#/capture-gif' : '#/capture'
+  const hash = mode === 'gif' ? `#/capture-gif?displayId=${display.id}` : `#/capture?displayId=${display.id}`
   const url = process.env.VITE_DEV_SERVER_URL
     ? `${process.env.VITE_DEV_SERVER_URL}${hash}`
     : `file://${path.join(DIST, 'index.html')}${hash}`
 
-  overlayWindow.loadURL(url)
+  win.loadURL(url)
+    ; (win as any).displayId = display.id
 
-  overlayWindow.on('closed', () => {
-    overlayWindow = null
+  win.on('closed', () => {
+    overlayWindows = overlayWindows.filter(w => w !== win)
   })
+
+  overlayWindows.push(win)
 }
 
 function createTray() {
   const icon = nativeImage.createFromDataURL(
-    'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABAAAAAQCAYAAAAf8/9hAAAAgElEQVQ4T2NkoBAwUqifYdAb8P///z8DAwODPQMDgz0+F/z//59hAQMDwwJ8BjAyMNj/Z2RcAJNjxGUIPBAmBjcERwBMjJGB0f4/E+MCRiYme0ZGRvv/TIwLGBkY7WFyYH4gTIyBkdH+PxPjAiCf0Z6BgcEeZgiyGC5XDHo3AADQ1C0RriBR4wAAAABJRU5ErkJggg=='
+    'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABAAAAAQCAYAAAAf8/9hAAAACXBIWXMAAA7EAAAOxAGVKw4bAAADI0lEQVR4nKWTXUyTVxjHjx8EmyXGYLwoK9Abo3GbLDHVWlQ0GiExw01SKmYzSvyYsY2auCyOifGTC43gWnAJlqmwbGCUjRlRqR1DCpa2kpYKbSldi7HtSyn9LvC2nL95q4wl3pjtSX435zz5nf9zkoeQ/13AnKVL8xcJBKuyOBYKBFmrtkuyhJ8fXTzLV4uFW99lzZpDGYT3UaEwTyILFR85HS86WB4tkZ2Nrdi2P5a9XhrL2bA7JsjjkM4ilsayxdJwzoZSLNu453uycPXOgoKyU/i6ooqWfXuZHqmoxpYvv4HwCxnWFcuxdpcM63bJICqWp+HORMXylEhyAsu37K0hJGfj9ipVEzweDx20D01b7Q467HRRxuelowxD/aMM5e6cLhd1j4xQl8tNfT5v0thvxceFZUpC+OsLfmxswUQ8km70ejyIhILo0BpwQXELlbWN6DMPIBELc4+kCY0HUhbrMFbPCGpv30M0HKLukZc0HBrHwz+7cbLyOiyDNuiem3H8nBIPNFowPl9aMDbmT5kHHfj034JIKJiO3NSqxsmLtbDaHelm599u9PUPoOKqClU3muD1ejEeGEv2Wx1vEwjyC5W37iEWDVOL1U7Lr9xAKBhAODiOw+VXsePAKbjcI+DqYk0DOp8ZkYhFkqbBGcESYUF9YwswGachxkcrlQ1obe+EzmgC97nnFTfR0a2HRqvHd5frYBsa5tIm/xkht+7u4dOaZ1M/2Zxxlc0ZeWx6kVKomlFdfwfVqmZcUN5G3S+tuFTTgB6DCQzDYMzvT5oGhjiBgnygMdRntOtG5z7QBshvnZabDlcAqclpdjLBvnrlYe0OJzvNJtjpqQQ7GY+ywWCAZSfiEzaHixtBQTLbehoz1L3I1BhAHut918z2qL7XjEddRvylM+Gpvh9qrRFq7XM86X6D1mhJtqh1yN1x8AfCa+/9ObPdwGY+MUwt6Ojzb/710fWVuZ8d4m8qPcYXl8j5ohK5QDwLP08qy86THM0RS06s2LTvE8L7/amId79rJ6+tq4jX1lPE+6Pvw5kl+0/LKWlunpeff2b++0AImfsaRsUyVZKqP74AAAAASUVORK5CYII='
   )
 
   tray = new Tray(icon)
@@ -193,40 +203,43 @@ function createTray() {
 
 async function startCapture(mode: 'screenshot' | 'gif' = 'screenshot') {
   try {
-    const wasVisible = mainWindow?.isVisible()
-    if (wasVisible) {
-      mainWindow?.hide()
-      // ウィンドウが見えていた場合のみ短い待機（画面から消えるのを待つ）
-      await new Promise((r) => setTimeout(r, 100))
+    closeAllOverlays()
+
+    const allDisplays = screen.getAllDisplays()
+    overlayReadyWaitingCount = allDisplays.length
+
+    for (const display of allDisplays) {
+      createOverlayWindow(display, mode)
     }
 
-    const primaryDisplay = screen.getPrimaryDisplay()
-    const { width, height } = primaryDisplay.size
-    const scaleFactor = primaryDisplay.scaleFactor
+    if (mainWindow && !mainWindow.isDestroyed() && mainWindow.isVisible()) {
+      mainWindow.hide()
+      await new Promise((r) => setTimeout(r, 80))
+    }
 
     const sources = await desktopCapturer.getSources({
       types: ['screen'],
-      thumbnailSize: {
-        width: Math.floor(width * scaleFactor),
-        height: Math.floor(height * scaleFactor),
-      },
+      thumbnailSize: { width: 4000, height: 4000 }
     })
 
-    if (sources.length > 0) {
-      const screenshot = sources[0].thumbnail.toDataURL()
+    allDisplays.forEach(display => {
+      const source = sources.find(s => s.display_id === String(display.id)) || sources[0]
+      const { width, height } = display.size
+      const scaleFactor = display.scaleFactor
+      const screenshot = source.thumbnail.toDataURL()
 
-      pendingScreenshot = {
-        dataUrl: screenshot,
-        width,
-        height,
-        scaleFactor,
+      pendingScreenshots.set(display.id, { dataUrl: screenshot, width, height, scaleFactor })
+
+      const win = overlayWindows.find(w => (w as any).displayId === display.id)
+      if (win && !win.isDestroyed() && (win as any).isReadyToReceive) {
+        win.webContents.send('screenshot:data', screenshot, { width, height, scaleFactor })
+        win.show()
       }
+    })
 
-      createOverlayWindow(mode)
-    }
   } catch (err) {
     console.error('Failed to capture screen:', err)
-    mainWindow?.show()
+    if (mainWindow && !mainWindow.isDestroyed()) mainWindow.show()
   }
 }
 
@@ -236,61 +249,55 @@ ipcMain.on('capture:start', () => {
   startCapture()
 })
 
-ipcMain.on('capture:overlay-ready', () => {
-  if (pendingScreenshot && overlayWindow) {
-    overlayWindow.webContents.send(
-      'screenshot:data',
-      pendingScreenshot.dataUrl,
-      {
-        width: pendingScreenshot.width,
-        height: pendingScreenshot.height,
-        scaleFactor: pendingScreenshot.scaleFactor,
-      }
-    )
-    pendingScreenshot = null
+ipcMain.on('capture:overlay-ready', (event) => {
+  const win = BrowserWindow.fromWebContents(event.sender)
+  if (!win || win.isDestroyed()) return
+
+  const displayId = (win as any).displayId
+  const pending = pendingScreenshots.get(displayId)
+
+  if (pending) {
+    win.webContents.send('screenshot:data', pending.dataUrl, {
+      width: pending.width,
+      height: pending.height,
+      scaleFactor: pending.scaleFactor,
+    })
+    win.show()
+  } else {
+    ; (win as any).isReadyToReceive = true
   }
 })
 
-ipcMain.on('capture:region-selected', (_event, regionData: string) => {
-  overlayWindow?.close()
-  overlayWindow = null
+ipcMain.on('capture:region-selected', (event, regionData: string) => {
+  closeAllOverlays()
 
-  if (!mainWindow) {
+  if (!mainWindow || mainWindow.isDestroyed()) {
     createMainWindow()
   }
 
-  pendingEditorImage = regionData
+  mainWindow!.setSize(1100, 750)
+  mainWindow!.center()
+  mainWindow!.show()
+  mainWindow!.focus()
 
-  mainWindow?.setSize(1100, 750)
-  mainWindow?.center()
-  mainWindow?.show()
-  mainWindow?.focus()
-
-  // ウィンドウ表示後にすぐ画像を送る（readyならすぐ、未readyなら待つ）
   const sendImage = () => {
-    if (pendingEditorImage) {
-      mainWindow?.webContents.send('editor:open', pendingEditorImage)
+    if (mainWindow && !mainWindow.isDestroyed()) {
+      mainWindow.webContents.send('editor:open', regionData)
     }
   }
-  if (mainWindow?.webContents.isLoading()) {
-    mainWindow?.webContents.once('did-finish-load', sendImage)
+  if (mainWindow!.webContents.isLoading()) {
+    mainWindow!.webContents.once('did-finish-load', sendImage)
   } else {
     sendImage()
   }
 })
 
 ipcMain.on('editor:request-image', () => {
-  if (pendingEditorImage && mainWindow) {
-    mainWindow.webContents.send('editor:open', pendingEditorImage)
-    pendingEditorImage = null
-  }
 })
 
 ipcMain.on('capture:cancel', () => {
-  overlayWindow?.close()
-  overlayWindow = null
-  pendingScreenshot = null
-  mainWindow?.show()
+  closeAllOverlays()
+  if (mainWindow && !mainWindow.isDestroyed()) mainWindow.show()
 })
 
 // ---- IPC: GIF Capture (region selection) ----
@@ -301,24 +308,29 @@ ipcMain.on('capture:start-gif', () => {
 
 ipcMain.on(
   'capture:gif-region-selected',
-  (_event, region: { x: number; y: number; w: number; h: number; scaleFactor: number }) => {
-    overlayWindow?.close()
-    overlayWindow = null
+  (event, region: { x: number; y: number; w: number; h: number; scaleFactor: number }) => {
+    const win = BrowserWindow.fromWebContents(event.sender)
+    const displayId = (win as any).displayId
+    activeDisplay = screen.getAllDisplays().find(d => d.id === displayId) || screen.getPrimaryDisplay()
 
-    if (!mainWindow) {
+    closeAllOverlays()
+
+    if (!mainWindow || mainWindow.isDestroyed()) {
       createMainWindow()
     }
 
-    mainWindow?.setSize(1100, 750)
-    mainWindow?.center()
-    mainWindow?.show()
-    mainWindow?.focus()
+    mainWindow!.setSize(1100, 750)
+    mainWindow!.center()
+    mainWindow!.show()
+    mainWindow!.focus()
 
     const sendRegion = () => {
-      mainWindow?.webContents.send('gif:start-with-region', region)
+      if (mainWindow && !mainWindow.isDestroyed()) {
+        mainWindow.webContents.send('gif:start-with-region', region)
+      }
     }
-    if (mainWindow?.webContents.isLoading()) {
-      mainWindow?.webContents.once('did-finish-load', sendRegion)
+    if (mainWindow!.webContents.isLoading()) {
+      mainWindow!.webContents.once('did-finish-load', sendRegion)
     } else {
       sendRegion()
     }
@@ -330,14 +342,14 @@ ipcMain.on(
 ipcMain.on(
   'gif:show-recording-ui',
   (_event, region: { x: number; y: number; w: number; h: number; scaleFactor: number }) => {
-    const primaryDisplay = screen.getPrimaryDisplay()
-    const { width: screenW, height: screenH } = primaryDisplay.size
+    const display = activeDisplay || screen.getPrimaryDisplay()
+    const { width: screenW, height: screenH } = display.size
+    const { x: dispX, y: dispY } = display.bounds
     const sf = region.scaleFactor
 
-    // Full-screen click-through overlay
     recordingOverlayWindow = new BrowserWindow({
-      x: 0,
-      y: 0,
+      x: dispX,
+      y: dispY,
       width: screenW,
       height: screenH,
       transparent: true,
@@ -367,7 +379,6 @@ ipcMain.on(
       recordingOverlayWindow = null
     })
 
-    // Small control popup — position outside recording region
     const controlW = 200
     const controlH = 50
     const cssX = Math.round(region.x / sf)
@@ -388,8 +399,8 @@ ipcMain.on(
     controlY = Math.max(0, Math.min(controlY, screenH - controlH))
 
     recordingControlWindow = new BrowserWindow({
-      x: controlX,
-      y: controlY,
+      x: dispX + controlX,
+      y: dispY + controlY,
       width: controlW,
       height: controlH,
       transparent: true,
@@ -420,21 +431,29 @@ ipcMain.on(
 )
 
 ipcMain.on('gif:hide-recording-ui', () => {
-  recordingOverlayWindow?.close()
+  if (recordingOverlayWindow && !recordingOverlayWindow.isDestroyed()) {
+    recordingOverlayWindow.close()
+  }
   recordingOverlayWindow = null
-  recordingControlWindow?.close()
+  if (recordingControlWindow && !recordingControlWindow.isDestroyed()) {
+    recordingControlWindow.close()
+  }
   recordingControlWindow = null
 })
 
 ipcMain.on('gif:stop-from-control', () => {
-  mainWindow?.webContents.send('gif:stop-recording')
-  recordingOverlayWindow?.close()
+  if (mainWindow && !mainWindow.isDestroyed()) {
+    mainWindow.webContents.send('gif:stop-recording')
+  }
+  if (recordingOverlayWindow && !recordingOverlayWindow.isDestroyed()) {
+    recordingOverlayWindow.close()
+  }
   recordingOverlayWindow = null
-  recordingControlWindow?.close()
+  if (recordingControlWindow && !recordingControlWindow.isDestroyed()) {
+    recordingControlWindow.close()
+  }
   recordingControlWindow = null
 })
-
-// ---- IPC: Auto-save ----
 
 ipcMain.handle(
   'image:auto-save',
@@ -443,9 +462,7 @@ ipcMain.handle(
       const folder = getLocalSaveFolder()
       const fileName = `snap_${generateTimestamp()}.png`
       const filePath = path.join(folder, fileName)
-
       const base64Data = dataUrl.replace(/^data:image\/png;base64,/, '')
-      // Use async writing for better performance
       await fs.promises.writeFile(filePath, Buffer.from(base64Data, 'base64'))
       return filePath
     } catch (err) {
@@ -456,29 +473,23 @@ ipcMain.handle(
 )
 
 ipcMain.on('auto-save-complete', () => {
-  // Window is already hidden in 'close' event handler for speed
-  // Just log or do nothing
 })
 
-// ---- IPC: Window control ----
-
 ipcMain.on('window:hide', () => {
-  mainWindow?.hide()
+  if (mainWindow && !mainWindow.isDestroyed()) mainWindow.hide()
 })
 
 ipcMain.on('window:show', () => {
-  mainWindow?.show()
-  mainWindow?.focus()
+  if (mainWindow && !mainWindow.isDestroyed()) {
+    mainWindow.show()
+    mainWindow.focus()
+  }
 })
-
-// ---- IPC: Image copy (kept for Ctrl+C) ----
 
 ipcMain.on('image:copy', (_event, dataUrl: string) => {
   const img = nativeImage.createFromDataURL(dataUrl)
   clipboard.writeImage(img)
 })
-
-// ---- IPC: Video save ----
 
 ipcMain.handle(
   'video:save',
@@ -491,8 +502,6 @@ ipcMain.handle(
   }
 )
 
-// ---- IPC: GIF save ----
-
 ipcMain.handle(
   'gif:save',
   async (_event, data: Uint8Array): Promise<string> => {
@@ -503,8 +512,6 @@ ipcMain.handle(
     return filePath
   }
 )
-
-// ---- IPC: Google Drive (OAuth + Drive API) ----
 
 ipcMain.handle('google-drive:upload', async (_event, dataUrl: string) => {
   return await uploadToGoogleDrive(dataUrl)
@@ -523,8 +530,6 @@ ipcMain.handle('google:logout', () => {
 ipcMain.handle('google:status', () => {
   return isGoogleConnected()
 })
-
-// ---- IPC: Settings ----
 
 ipcMain.handle('settings:get', () => {
   return loadSettings()
@@ -570,15 +575,13 @@ ipcMain.handle('settings:browse-folder', async () => {
   return null
 })
 
-// ---- App lifecycle ----
-
 const gotTheLock = app.requestSingleInstanceLock()
 
 if (!gotTheLock) {
   app.quit()
 } else {
   app.on('second-instance', () => {
-    if (mainWindow) {
+    if (mainWindow && !mainWindow.isDestroyed()) {
       mainWindow.show()
       mainWindow.focus()
     }
@@ -587,12 +590,9 @@ if (!gotTheLock) {
   app.whenReady().then(() => {
     createMainWindow()
     createTray()
-
     globalShortcut.register('Ctrl+Shift+S', () => {
       startCapture()
     })
-
-    // 起動直後にキャプチャを開始（メインウィンドウのReact読み込みを待たない）
     startCapture()
   })
 
@@ -600,14 +600,10 @@ if (!gotTheLock) {
     globalShortcut.unregisterAll()
   })
 
-  app.on('window-all-closed', () => {
-    // Keep running in tray
-  })
-
   app.on('activate', () => {
-    if (!mainWindow) {
+    if (!mainWindow || mainWindow.isDestroyed()) {
       createMainWindow()
     }
-    mainWindow?.show()
+    if (mainWindow && !mainWindow.isDestroyed()) mainWindow.show()
   })
 }

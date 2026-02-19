@@ -10,6 +10,7 @@ import {
   Text,
   Circle,
   Group,
+  Transformer,
 } from 'react-konva'
 import Konva from 'konva'
 import Toolbar from './Toolbar'
@@ -34,10 +35,17 @@ const BADGE_COLORS: Record<BadgeKind, { bg: string; fg: string }> = {
   BUG: { bg: '#ff9100', fg: '#fff' },
 }
 
+// Tool shortcut key map
+const TOOL_SHORTCUTS: Record<string, ToolType> = {
+  v: 'select', p: 'pen', t: 'text', a: 'arrow',
+  r: 'rect', e: 'ellipse', m: 'mosaic', s: 'step', b: 'badge',
+}
+
 const AnnotationEditor: React.FC<AnnotationEditorProps> = ({
   imageDataUrl,
 }) => {
   const stageRef = useRef<Konva.Stage>(null)
+  const transformerRef = useRef<Konva.Transformer>(null)
   const [image, setImage] = useState<HTMLImageElement | null>(null)
   const [stageSize, setStageSize] = useState({ width: 800, height: 600 })
 
@@ -49,12 +57,14 @@ const AnnotationEditor: React.FC<AnnotationEditorProps> = ({
 
   const [isDrawing, setIsDrawing] = useState(false)
   const [currentPenPoints, setCurrentPenPoints] = useState<number[]>([])
-  const [drawStart, setDrawStart] = useState<{ x: number; y: number } | null>(
-    null
-  )
+  const [drawStart, setDrawStart] = useState<{ x: number; y: number } | null>(null)
   const [selectedId, setSelectedId] = useState<string | null>(null)
   const [editingTextId, setEditingTextId] = useState<string | null>(null)
   const [statusMsg, setStatusMsg] = useState<{ text: string; error: boolean } | null>(null)
+
+  // Zoom/Pan state
+  const [stageScale, setStageScale] = useState(1)
+  const [stagePos, setStagePos] = useState({ x: 0, y: 0 })
 
   // GIF recording state
   const [isGifRecording, setIsGifRecording] = useState(false)
@@ -63,14 +73,18 @@ const AnnotationEditor: React.FC<AnnotationEditorProps> = ({
   const [gifPreparing, setGifPreparing] = useState(false)
   const [gifEncoding, setGifEncoding] = useState(false)
   const [gifPreviewUrl, setGifPreviewUrl] = useState<string | null>(null)
+  const [gifCountdown, setGifCountdown] = useState<number | null>(null)
   const gifRef = useRef<{ stream: MediaStream; stop: () => void } | null>(null)
   const gifTimerRef = useRef<number | null>(null)
 
+  // Pen throttle ref
+  const penThrottleRef = useRef<number>(0)
 
   const {
     annotations,
     addAnnotation,
     updateAnnotation,
+    removeAnnotation,
     undo,
     redo,
     canUndo,
@@ -91,10 +105,10 @@ const AnnotationEditor: React.FC<AnnotationEditorProps> = ({
     const scaleX = image.width / stageSize.width
     const scaleY = image.height / stageSize.height
     return stage.toDataURL({
-      pixelRatio: Math.max(scaleX, scaleY),
+      pixelRatio: Math.max(scaleX, scaleY) / stageScale,
       mimeType: 'image/png',
     })
-  }, [image, stageSize])
+  }, [image, stageSize, stageScale])
 
   // Load captured image
   useEffect(() => {
@@ -109,6 +123,9 @@ const AnnotationEditor: React.FC<AnnotationEditorProps> = ({
         width: Math.round(img.width * scale),
         height: Math.round(img.height * scale),
       })
+      // Reset zoom/pan when new image loads
+      setStageScale(1)
+      setStagePos({ x: 0, y: 0 })
     }
     img.src = imageDataUrl
   }, [imageDataUrl])
@@ -130,20 +147,61 @@ const AnnotationEditor: React.FC<AnnotationEditorProps> = ({
   // Keyboard shortcuts
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
+      // Ignore shortcuts when editing text
+      if (editingTextId) return
+
+      // Ignore shortcuts when focus is in an input or textarea (e.g. settings panel)
+      const target = e.target as HTMLElement
+      if (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.isContentEditable) return
+
       if (e.ctrlKey && e.key === 'z') {
         e.preventDefault()
         undo()
       } else if (e.ctrlKey && e.key === 'y') {
         e.preventDefault()
         redo()
+      } else if ((e.key === 'Delete' || e.key === 'Backspace') && selectedId) {
+        e.preventDefault()
+        removeAnnotation(selectedId)
+        setSelectedId(null)
       } else if (e.key === 'Escape') {
         setSelectedId(null)
         setActiveTool('select')
+      } else if (!e.ctrlKey && !e.altKey && !e.metaKey) {
+        // Tool shortcuts (single key)
+        const tool = TOOL_SHORTCUTS[e.key.toLowerCase()]
+        if (tool) {
+          setActiveTool(tool)
+        }
       }
     }
     window.addEventListener('keydown', handleKeyDown)
     return () => window.removeEventListener('keydown', handleKeyDown)
-  }, [undo, redo])
+  }, [undo, redo, selectedId, removeAnnotation, editingTextId])
+
+  // Update Transformer when selection changes
+  useEffect(() => {
+    const tr = transformerRef.current
+    if (!tr) return
+
+    if (!selectedId || activeTool !== 'select') {
+      tr.nodes([])
+      tr.getLayer()?.batchDraw()
+      return
+    }
+
+    const stage = stageRef.current
+    if (!stage) return
+
+    const node = stage.findOne(`#${selectedId}`)
+    if (node) {
+      tr.nodes([node])
+      tr.getLayer()?.batchDraw()
+    } else {
+      tr.nodes([])
+      tr.getLayer()?.batchDraw()
+    }
+  }, [selectedId, activeTool, annotations])
 
   // Cleanup recording timers on unmount
   useEffect(() => {
@@ -154,7 +212,6 @@ const AnnotationEditor: React.FC<AnnotationEditorProps> = ({
 
   // New screenshot with auto-save
   const handleNewCapture = async () => {
-    console.log('[handleNewCapture] called, image:', !!image)
     try {
       if (image) {
         const dataUrl = exportImage()
@@ -163,7 +220,6 @@ const AnnotationEditor: React.FC<AnnotationEditorProps> = ({
         }
       }
       setGifPreviewUrl(null)
-      console.log('[handleNewCapture] calling startCapture')
       window.electronAPI?.startCapture()
     } catch (err) {
       console.error('[handleNewCapture] error:', err)
@@ -178,8 +234,6 @@ const AnnotationEditor: React.FC<AnnotationEditorProps> = ({
     }
 
     setGifPreviewUrl(null)
-
-    // Open overlay for region selection (same UX as New screenshot)
     window.electronAPI?.startGifCapture()
   }
 
@@ -190,17 +244,20 @@ const AnnotationEditor: React.FC<AnnotationEditorProps> = ({
 
     try {
       const stream = await navigator.mediaDevices.getDisplayMedia({
-        video: true,
+        video: {
+          cursor: 'never',
+        } as any,
         audio: false,
       })
 
       setGifPreparing(false)
 
-      // 3秒カウントダウン
+      // 3秒カウントダウン（画面上にオーバーレイ表示）
       for (let i = 3; i > 0; i--) {
-        showStatus(`GIF録画開始まで ${i} 秒...`)
+        setGifCountdown(i)
         await new Promise((r) => setTimeout(r, 1000))
       }
+      setGifCountdown(null)
 
       window.electronAPI?.hideWindow()
       await new Promise((r) => setTimeout(r, 300))
@@ -221,7 +278,7 @@ const AnnotationEditor: React.FC<AnnotationEditorProps> = ({
       video.muted = true
       await video.play()
 
-      // Full-screen capture canvas (to draw full frame first)
+      // Full-screen capture canvas
       const fullCanvas = document.createElement('canvas')
       fullCanvas.width = srcW
       fullCanvas.height = srcH
@@ -238,37 +295,55 @@ const AnnotationEditor: React.FC<AnnotationEditorProps> = ({
 
       const FPS = 10
       const MAX_SECONDS = 30
-      const frameDelay = Math.round(1000 / FPS)
+      const frameDelay = 1000 / FPS
       let frameCount = 0
+      let globalPalette: number[][] | null = null
+      let lastFrameTime = 0
+      let animationFrameId: number | null = null
 
-      const captureInterval = window.setInterval(() => {
-        if (frameCount >= MAX_SECONDS * FPS) {
-          stopGif()
-          return
+      const captureFrame = (time: number) => {
+        if (stopped) return
+
+        if (time - lastFrameTime >= frameDelay) {
+          lastFrameTime = time
+
+          if (frameCount >= MAX_SECONDS * FPS) {
+            stopGif()
+            return
+          }
+
+          // Draw full screen to full canvas
+          fullCtx.drawImage(video, 0, 0, srcW, srcH)
+          // Crop selected region to output canvas
+          ctx.drawImage(
+            fullCanvas,
+            region.x, region.y, region.w, region.h,
+            0, 0, w, h
+          )
+          const imageData = ctx.getImageData(0, 0, w, h)
+
+          if (!globalPalette) {
+            // First frame: build global palette
+            globalPalette = quantize(imageData.data as unknown as Uint8ClampedArray, 256)
+          }
+          const index = applyPalette(imageData.data as unknown as Uint8ClampedArray, globalPalette)
+          gif.writeFrame(index, w, h, { palette: globalPalette, delay: frameDelay })
+          frameCount++
+          setGifFrameCount(frameCount)
         }
-        // Draw full screen to full canvas
-        fullCtx.drawImage(video, 0, 0, srcW, srcH)
-        // Crop selected region to output canvas
-        ctx.drawImage(
-          fullCanvas,
-          region.x, region.y, region.w, region.h,
-          0, 0, w, h
-        )
-        const imageData = ctx.getImageData(0, 0, w, h)
-        const palette = quantize(imageData.data as unknown as Uint8ClampedArray, 256)
-        const index = applyPalette(imageData.data as unknown as Uint8ClampedArray, palette)
-        gif.writeFrame(index, w, h, { palette, delay: frameDelay })
-        frameCount++
-        setGifFrameCount(frameCount)
-      }, frameDelay)
+
+        animationFrameId = requestAnimationFrame(captureFrame)
+      }
+
+      animationFrameId = requestAnimationFrame(captureFrame)
 
       let stopped = false
       const stopGif = async () => {
         if (stopped) return
         stopped = true
+        if (animationFrameId !== null) cancelAnimationFrame(animationFrameId)
         cleanupStopListener?.()
 
-        clearInterval(captureInterval)
         if (gifTimerRef.current) {
           clearInterval(gifTimerRef.current)
           gifTimerRef.current = null
@@ -291,7 +366,6 @@ const AnnotationEditor: React.FC<AnnotationEditorProps> = ({
           gif.finish()
           const bytes = gif.bytes()
 
-          // GIF プレビュー用 data URL を生成
           const gifBlob = new Blob([new Uint8Array(bytes)], { type: 'image/gif' })
           const gifDataUrl = await new Promise<string>((resolve) => {
             const r = new FileReader()
@@ -302,10 +376,8 @@ const AnnotationEditor: React.FC<AnnotationEditorProps> = ({
           const result = await window.electronAPI.saveGif(bytes)
           setGifEncoding(false)
 
-          // プレビュー表示
           setGifPreviewUrl(gifDataUrl)
 
-          // Google Drive にも自動アップロード
           try {
             const connected = await window.electronAPI.googleStatus()
             if (connected) {
@@ -333,7 +405,6 @@ const AnnotationEditor: React.FC<AnnotationEditorProps> = ({
         stopGif()
       })
 
-      // Listen for stop from recording control popup
       const cleanupStopListener = window.electronAPI?.onGifStopRecording(() => {
         stopGif()
       })
@@ -346,10 +417,10 @@ const AnnotationEditor: React.FC<AnnotationEditorProps> = ({
         setGifElapsed((prev) => prev + 1)
       }, 1000)
 
-      // Show recording overlay + control popup (instead of main window)
       window.electronAPI?.showRecordingUI(region)
     } catch (err: any) {
       setGifPreparing(false)
+      setGifCountdown(null)
       window.electronAPI?.showWindow()
       if (err.name !== 'NotAllowedError') {
         showStatus(`GIF録画エラー: ${err.message}`, true)
@@ -369,11 +440,45 @@ const AnnotationEditor: React.FC<AnnotationEditorProps> = ({
     gifRef.current?.stop()
   }
 
+  // Zoom with Ctrl+Wheel
+  const handleWheel = useCallback((e: Konva.KonvaEventObject<WheelEvent>) => {
+    if (!e.evt.ctrlKey) return
+    e.evt.preventDefault()
+
+    const stage = stageRef.current
+    if (!stage) return
+
+    const oldScale = stageScale
+    const pointer = stage.getPointerPosition()
+    if (!pointer) return
+
+    const scaleBy = 1.1
+    const newScale = e.evt.deltaY < 0
+      ? Math.min(oldScale * scaleBy, 5)
+      : Math.max(oldScale / scaleBy, 0.2)
+
+    const mousePointTo = {
+      x: (pointer.x - stagePos.x) / oldScale,
+      y: (pointer.y - stagePos.y) / oldScale,
+    }
+
+    setStageScale(newScale)
+    setStagePos({
+      x: pointer.x - mousePointTo.x * newScale,
+      y: pointer.y - mousePointTo.y * newScale,
+    })
+  }, [stageScale, stagePos])
+
   const getPointerPosition = (): { x: number; y: number } | null => {
     const stage = stageRef.current
     if (!stage) return null
     const pos = stage.getPointerPosition()
-    return pos ? { x: pos.x, y: pos.y } : null
+    if (!pos) return null
+    // Adjust for scale and position
+    return {
+      x: (pos.x - stagePos.x) / stageScale,
+      y: (pos.y - stagePos.y) / stageScale,
+    }
   }
 
   const handleStageMouseDown = () => {
@@ -381,7 +486,9 @@ const AnnotationEditor: React.FC<AnnotationEditorProps> = ({
     if (!pos) return
 
     if (activeTool === 'select') {
-      const clickedOnEmpty = stageRef.current?.getIntersection(pos)
+      const clickedOnEmpty = stageRef.current?.getIntersection(
+        stageRef.current.getPointerPosition()!
+      )
       if (!clickedOnEmpty || (clickedOnEmpty as unknown) === stageRef.current) {
         setSelectedId(null)
       }
@@ -400,7 +507,7 @@ const AnnotationEditor: React.FC<AnnotationEditorProps> = ({
         color,
       })
       setEditingTextId(id)
-      setActiveTool('select')
+      // Keep text tool active for consecutive placements (don't reset to select)
       return
     }
 
@@ -441,6 +548,10 @@ const AnnotationEditor: React.FC<AnnotationEditorProps> = ({
     if (!pos) return
 
     if (activeTool === 'pen') {
+      // Throttle pen updates (A4: ~16ms = 60fps max)
+      const now = performance.now()
+      if (now - penThrottleRef.current < 16) return
+      penThrottleRef.current = now
       setCurrentPenPoints((prev) => [...prev, pos.x, pos.y])
     }
   }
@@ -537,8 +648,7 @@ const AnnotationEditor: React.FC<AnnotationEditorProps> = ({
     }
 
     setDrawStart(null)
-    // 描画完了後、自動で選択ツールに戻す
-    setActiveTool('select')
+    // B1: Do NOT reset to select tool — keep current tool active
   }
 
   // 右クリックで即座に選択ツールに戻す
@@ -549,6 +659,48 @@ const AnnotationEditor: React.FC<AnnotationEditorProps> = ({
     setIsDrawing(false)
     setCurrentPenPoints([])
     setDrawStart(null)
+  }
+
+  // Handle transform end — update annotation dimensions
+  const handleTransformEnd = (ann: Annotation) => {
+    const stage = stageRef.current
+    if (!stage) return
+    const node = stage.findOne(`#${ann.id}`)
+    if (!node) return
+
+    const scaleX = node.scaleX()
+    const scaleY = node.scaleY()
+
+    // Reset node scale and apply to dimensions
+    node.scaleX(1)
+    node.scaleY(1)
+
+    switch (ann.type) {
+      case 'rect':
+      case 'mosaic':
+        updateAnnotation(ann.id, {
+          x: node.x(),
+          y: node.y(),
+          width: Math.max(5, ann.width * scaleX),
+          height: Math.max(5, ann.height * scaleY),
+        })
+        break
+      case 'ellipse':
+        updateAnnotation(ann.id, {
+          x: node.x(),
+          y: node.y(),
+          radiusX: Math.max(3, ann.radiusX * scaleX),
+          radiusY: Math.max(3, ann.radiusY * scaleY),
+        })
+        break
+      case 'text':
+        updateAnnotation(ann.id, {
+          x: node.x(),
+          y: node.y(),
+          fontSize: Math.max(8, Math.round(ann.fontSize * scaleY)),
+        })
+        break
+    }
   }
 
   // Text editing via textarea overlay
@@ -563,9 +715,9 @@ const AnnotationEditor: React.FC<AnnotationEditorProps> = ({
     const textarea = document.createElement('textarea')
     textarea.value = ann.text
     textarea.style.position = 'fixed'
-    textarea.style.left = `${stageRect.left + ann.x}px`
-    textarea.style.top = `${stageRect.top + ann.y}px`
-    textarea.style.fontSize = `${ann.fontSize}px`
+    textarea.style.left = `${stageRect.left + (ann.x * stageScale + stagePos.x)}px`
+    textarea.style.top = `${stageRect.top + (ann.y * stageScale + stagePos.y)}px`
+    textarea.style.fontSize = `${ann.fontSize * stageScale}px`
     textarea.style.color = ann.color
     textarea.style.border = '2px solid #00FFFF'
     textarea.style.borderRadius = '4px'
@@ -609,31 +761,51 @@ const AnnotationEditor: React.FC<AnnotationEditorProps> = ({
     })
   }
 
-  // Mosaic rendering
-  const renderMosaic = (ann: Annotation & { type: 'mosaic' }) => {
-    if (!image) return null
-    const rects: React.ReactElement[] = []
-    const ps = ann.pixelSize
-    for (let y = 0; y < ann.height; y += ps) {
-      for (let x = 0; x < ann.width; x += ps) {
-        const shade =
-          (Math.floor(x / ps) + Math.floor(y / ps)) % 2 === 0
-            ? '#6c7086'
-            : '#45475a'
-        rects.push(
-          <Rect
-            key={`${ann.id}-${x}-${y}`}
-            x={ann.x + x}
-            y={ann.y + y}
-            width={Math.min(ps, ann.width - x)}
-            height={Math.min(ps, ann.height - y)}
-            fill={shade}
-          />
-        )
+  // Mosaic rendering using Konva.Image with canvas (A3: much faster than individual Rects)
+  const MosaicImage: React.FC<{ ann: Annotation & { type: 'mosaic' } }> = React.memo(({ ann }) => {
+    const [mosaicImage, setMosaicImage] = useState<HTMLCanvasElement | null>(null)
+
+    useEffect(() => {
+      const canvas = document.createElement('canvas')
+      canvas.width = Math.round(ann.width)
+      canvas.height = Math.round(ann.height)
+      const ctx = canvas.getContext('2d')
+      if (!ctx) return
+
+      const ps = ann.pixelSize
+      for (let y = 0; y < ann.height; y += ps) {
+        for (let x = 0; x < ann.width; x += ps) {
+          ctx.fillStyle =
+            (Math.floor(x / ps) + Math.floor(y / ps)) % 2 === 0
+              ? '#6c7086'
+              : '#45475a'
+          ctx.fillRect(x, y, Math.min(ps, ann.width - x), Math.min(ps, ann.height - y))
+        }
       }
-    }
-    return rects
-  }
+      setMosaicImage(canvas)
+    }, [ann.width, ann.height, ann.pixelSize])
+
+    if (!mosaicImage) return null
+
+    return (
+      <KonvaImage
+        id={ann.id}
+        image={mosaicImage}
+        x={ann.x}
+        y={ann.y}
+        width={ann.width}
+        height={ann.height}
+        draggable={activeTool === 'select'}
+        onClick={() => {
+          if (activeTool === 'select') setSelectedId(ann.id)
+        }}
+        onDragEnd={(e) => {
+          updateAnnotation(ann.id, { x: e.target.x(), y: e.target.y() })
+        }}
+        onTransformEnd={() => handleTransformEnd(ann)}
+      />
+    )
+  })
 
   // Draw preview while dragging
   const renderDrawPreview = () => {
@@ -714,6 +886,7 @@ const AnnotationEditor: React.FC<AnnotationEditorProps> = ({
         return (
           <Line
             key={ann.id}
+            id={ann.id}
             points={ann.points}
             stroke={ann.color}
             strokeWidth={ann.strokeWidth}
@@ -741,6 +914,7 @@ const AnnotationEditor: React.FC<AnnotationEditorProps> = ({
               visible={editingTextId !== ann.id}
             />
             <Text
+              id={ann.id}
               x={ann.x}
               y={ann.y}
               text={ann.text}
@@ -760,6 +934,7 @@ const AnnotationEditor: React.FC<AnnotationEditorProps> = ({
                   y: e.target.y(),
                 })
               }}
+              onTransformEnd={() => handleTransformEnd(ann)}
             />
           </React.Fragment>
         )
@@ -768,6 +943,7 @@ const AnnotationEditor: React.FC<AnnotationEditorProps> = ({
         return (
           <Arrow
             key={ann.id}
+            id={ann.id}
             points={ann.points}
             stroke={ann.color}
             strokeWidth={ann.strokeWidth}
@@ -798,6 +974,7 @@ const AnnotationEditor: React.FC<AnnotationEditorProps> = ({
         return (
           <Rect
             key={ann.id}
+            id={ann.id}
             x={ann.x}
             y={ann.y}
             width={ann.width}
@@ -814,6 +991,7 @@ const AnnotationEditor: React.FC<AnnotationEditorProps> = ({
                 y: e.target.y(),
               })
             }}
+            onTransformEnd={() => handleTransformEnd(ann)}
           />
         )
 
@@ -821,6 +999,7 @@ const AnnotationEditor: React.FC<AnnotationEditorProps> = ({
         return (
           <Ellipse
             key={ann.id}
+            id={ann.id}
             x={ann.x}
             y={ann.y}
             radiusX={ann.radiusX}
@@ -837,20 +1016,18 @@ const AnnotationEditor: React.FC<AnnotationEditorProps> = ({
                 y: e.target.y(),
               })
             }}
+            onTransformEnd={() => handleTransformEnd(ann)}
           />
         )
 
       case 'mosaic':
-        return (
-          <React.Fragment key={ann.id}>
-            {renderMosaic(ann)}
-          </React.Fragment>
-        )
+        return <MosaicImage key={ann.id} ann={ann} />
 
       case 'step':
         return (
           <Group
             key={ann.id}
+            id={ann.id}
             x={ann.x}
             y={ann.y}
             draggable={isDraggable}
@@ -886,6 +1063,7 @@ const AnnotationEditor: React.FC<AnnotationEditorProps> = ({
         return (
           <Group
             key={ann.id}
+            id={ann.id}
             x={ann.x}
             y={ann.y}
             draggable={isDraggable}
@@ -943,7 +1121,7 @@ const AnnotationEditor: React.FC<AnnotationEditorProps> = ({
 
   const anyRecording = isGifRecording || gifPreparing || gifEncoding
 
-  // ---- Editor with image ----
+  // ---- Editor ----
   return (
     <div
       style={{
@@ -977,29 +1155,21 @@ const AnnotationEditor: React.FC<AnnotationEditorProps> = ({
         }}>
           {/* New screenshot */}
           <button
+            className="action-btn"
             onClick={handleNewCapture}
             disabled={anyRecording}
             style={{
               width: 38,
               height: 38,
-              border: 'none',
-              borderRadius: 6,
-              background: 'transparent',
               color: '#b0b0d0',
-              cursor: anyRecording ? 'default' : 'pointer',
-              display: 'flex',
               flexDirection: 'column',
-              alignItems: 'center',
-              justifyContent: 'center',
-              transition: 'all 0.15s',
-              opacity: anyRecording ? 0.3 : 1,
               gap: 1,
             }}
-            title="新規スクリーンショット"
+            title="新規スクリーンショット (Ctrl+Shift+S)"
           >
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-              <line x1="12" y1="5" x2="12" y2="19"/>
-              <line x1="5" y1="12" x2="19" y2="12"/>
+              <line x1="12" y1="5" x2="12" y2="19" />
+              <line x1="5" y1="12" x2="19" y2="12" />
             </svg>
             <span style={{ fontSize: 8, lineHeight: 1 }}>New</span>
           </button>
@@ -1009,54 +1179,42 @@ const AnnotationEditor: React.FC<AnnotationEditorProps> = ({
           {/* GIF recording button */}
           {!isGifRecording ? (
             <button
+              className="action-btn"
               onClick={handleRecordGif}
               disabled={anyRecording}
               style={{
                 width: 38,
                 height: 38,
-                border: 'none',
-                borderRadius: 6,
-                background: gifPreparing ? 'rgba(255,145,0,0.15)' : 'transparent',
                 color: gifPreparing ? '#ff9100' : '#b0b0d0',
-                cursor: anyRecording ? 'default' : 'pointer',
-                display: 'flex',
+                background: gifPreparing ? 'rgba(255,145,0,0.15)' : 'transparent',
                 flexDirection: 'column',
-                alignItems: 'center',
-                justifyContent: 'center',
-                transition: 'all 0.15s',
-                opacity: (anyRecording && !gifPreparing) ? 0.3 : 1,
                 gap: 1,
               }}
               title="画面録画（GIF）"
             >
               <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
-                <circle cx="12" cy="12" r="9"/>
-                <circle cx="12" cy="12" r="3.5" fill="currentColor" stroke="none"/>
+                <circle cx="12" cy="12" r="9" />
+                <circle cx="12" cy="12" r="3.5" fill="currentColor" stroke="none" />
               </svg>
               <span style={{ fontSize: 8, lineHeight: 1 }}>{gifPreparing ? 'Prep' : gifEncoding ? 'Encode' : 'Record'}</span>
             </button>
           ) : (
             <button
+              className="action-btn"
               onClick={handleStopGif}
               style={{
                 width: 38,
                 height: 38,
-                border: 'none',
-                borderRadius: 6,
                 background: 'rgba(255,23,68,0.15)',
                 color: '#ff1744',
-                cursor: 'pointer',
-                display: 'flex',
                 flexDirection: 'column',
-                alignItems: 'center',
-                justifyContent: 'center',
                 gap: 1,
                 animation: 'pulse 1.5s infinite',
               }}
               title="録画を停止"
             >
               <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor">
-                <rect x="5" y="5" width="14" height="14" rx="2"/>
+                <rect x="5" y="5" width="14" height="14" rx="2" />
               </svg>
               <span style={{ fontSize: 8, lineHeight: 1, fontFamily: 'monospace', fontWeight: 700 }}>
                 {gifElapsed}s
@@ -1084,7 +1242,7 @@ const AnnotationEditor: React.FC<AnnotationEditorProps> = ({
         />
       </div>
 
-      {/* Canvas / GIF Preview */}
+      {/* Canvas / GIF Preview / Empty state */}
       <div
         style={{
           flex: 1,
@@ -1107,22 +1265,37 @@ const AnnotationEditor: React.FC<AnnotationEditorProps> = ({
               }}
             />
             <button
+              className="share-btn"
               onClick={() => setGifPreviewUrl(null)}
               style={{
                 position: 'absolute',
                 top: 8,
                 right: 8,
-                padding: '4px 10px',
-                border: 'none',
-                borderRadius: 4,
                 background: 'rgba(0,0,0,0.7)',
                 color: '#b0b0d0',
                 fontSize: 11,
-                cursor: 'pointer',
+                padding: '4px 10px',
               }}
             >
               Close
             </button>
+          </div>
+        ) : !image ? (
+          /* B12: Empty state welcome */
+          <div className="empty-state">
+            <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="#4a4a6a" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+              <rect x="3" y="3" width="18" height="18" rx="2" />
+              <circle cx="8.5" cy="8.5" r="1.5" />
+              <polyline points="21 15 16 10 5 21" />
+            </svg>
+            <h2>MarkShot</h2>
+            <p>
+              <kbd>Ctrl+Shift+S</kbd> または <strong>New</strong> ボタンでキャプチャ開始<br />
+              <kbd>Record</kbd> ボタンでGIF録画<br /><br />
+              <span style={{ color: '#555', fontSize: 11 }}>
+                トレイアイコンのダブルクリックでもキャプチャできます
+              </span>
+            </p>
           </div>
         ) : (
           <div
@@ -1137,10 +1310,15 @@ const AnnotationEditor: React.FC<AnnotationEditorProps> = ({
               ref={stageRef}
               width={stageSize.width}
               height={stageSize.height}
+              scaleX={stageScale}
+              scaleY={stageScale}
+              x={stagePos.x}
+              y={stagePos.y}
               onMouseDown={handleStageMouseDown}
               onMouseMove={handleStageMouseMove}
               onMouseUp={handleStageMouseUp}
               onContextMenu={handleContextMenu}
+              onWheel={handleWheel}
             >
               <Layer>
                 <KonvaImage
@@ -1152,6 +1330,22 @@ const AnnotationEditor: React.FC<AnnotationEditorProps> = ({
               <Layer>
                 {annotations.map(renderAnnotation)}
                 {renderDrawPreview()}
+                <Transformer
+                  ref={transformerRef}
+                  borderStroke="#00FFFF"
+                  borderStrokeWidth={1.5}
+                  anchorStroke="#00FFFF"
+                  anchorFill="#1a1a2e"
+                  anchorSize={8}
+                  rotateEnabled={false}
+                  keepRatio={false}
+                  boundBoxFunc={(oldBox, newBox) => {
+                    if (Math.abs(newBox.width) < 5 || Math.abs(newBox.height) < 5) {
+                      return oldBox
+                    }
+                    return newBox
+                  }}
+                />
               </Layer>
             </Stage>
           </div>
@@ -1181,6 +1375,38 @@ const AnnotationEditor: React.FC<AnnotationEditorProps> = ({
           }}
         >
           {statusMsg.text}
+        </div>
+      )}
+
+      {/* B4: GIF countdown overlay (visible on screen) */}
+      {gifCountdown !== null && (
+        <div className="gif-countdown-overlay">
+          <div className="gif-countdown-number" key={gifCountdown}>
+            {gifCountdown}
+          </div>
+        </div>
+      )}
+
+      {/* Zoom indicator */}
+      {stageScale !== 1 && image && (
+        <div
+          style={{
+            position: 'fixed',
+            bottom: 60,
+            right: 16,
+            padding: '4px 10px',
+            borderRadius: 6,
+            background: 'rgba(26, 26, 46, 0.9)',
+            color: '#6c7086',
+            fontSize: 11,
+            fontFamily: 'monospace',
+            border: '1px solid #2a2a4a',
+            cursor: 'pointer',
+          }}
+          onClick={() => { setStageScale(1); setStagePos({ x: 0, y: 0 }) }}
+          title="クリックでリセット"
+        >
+          {Math.round(stageScale * 100)}%
         </div>
       )}
     </div>

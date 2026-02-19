@@ -8,8 +8,8 @@ const App: React.FC = () => {
   const [hash] = useState(() => window.location.hash)
   const [capturedImage, setCapturedImage] = useState<string | null>(null)
 
-  const isCapture = hash === '#/capture'
-  const isCaptureGif = hash === '#/capture-gif'
+  const isCapture = hash.startsWith('#/capture?') || hash === '#/capture'
+  const isCaptureGif = hash.startsWith('#/capture-gif?') || hash === '#/capture-gif'
   const isRecordingOverlay = hash.startsWith('#/recording-overlay/')
   const isRecordingControl = hash === '#/recording-control'
   const isOverlay = isCapture || isCaptureGif || isRecordingOverlay || isRecordingControl

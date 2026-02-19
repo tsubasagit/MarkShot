@@ -4,8 +4,9 @@ import electron from 'vite-plugin-electron'
 import electronRenderer from 'vite-plugin-electron-renderer'
 import path from 'path'
 
-export default defineConfig(({ mode }) => {
+export default defineConfig(({ command, mode }) => {
   const env = loadEnv(mode, process.cwd(), '')
+  const isBuild = command === 'build'
 
   return {
     plugins: [
@@ -26,7 +27,7 @@ export default defineConfig(({ mode }) => {
               rollupOptions: {
                 external: ['electron'],
               },
-              watch: {
+              watch: isBuild ? null : {
                 exclude: ['dist-electron/**'],
               },
             },
@@ -43,7 +44,7 @@ export default defineConfig(({ mode }) => {
               rollupOptions: {
                 external: ['electron'],
               },
-              watch: {
+              watch: isBuild ? null : {
                 exclude: ['dist-electron/**'],
               },
             },

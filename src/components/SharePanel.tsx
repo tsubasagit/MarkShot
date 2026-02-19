@@ -16,32 +16,6 @@ const styles: Record<string, React.CSSProperties> = {
     borderRadius: 8,
     border: '1px solid #2a2a4a',
   },
-  btn: {
-    padding: '8px 18px',
-    border: 'none',
-    borderRadius: 6,
-    fontSize: 13,
-    cursor: 'pointer',
-    display: 'flex',
-    alignItems: 'center',
-    gap: 6,
-    transition: 'background 0.15s',
-    fontFamily: 'Segoe UI, Meiryo, sans-serif',
-    fontWeight: 600,
-  },
-  driveBtn: {
-    background: '#4285f4',
-    color: '#fff',
-  },
-  copyBtn: {
-    background: '#2a2a4a',
-    color: '#b0b0d0',
-  },
-  settingsBtn: {
-    background: '#2a2a4a',
-    color: '#b0b0d0',
-    padding: '8px 12px',
-  },
   status: {
     fontSize: 12,
     padding: '2px 8px',
@@ -110,7 +84,8 @@ const SharePanel: React.FC<SharePanelProps> = ({ onExportImage }) => {
     <>
       <div style={styles.panel}>
         <button
-          style={{ ...styles.btn, ...styles.copyBtn }}
+          className="share-btn"
+          style={{ background: '#2a2a4a', color: '#b0b0d0' }}
           onClick={handleCopyImage}
           title="画像をクリップボードにコピー"
         >
@@ -122,7 +97,8 @@ const SharePanel: React.FC<SharePanelProps> = ({ onExportImage }) => {
         </button>
 
         <button
-          style={{ ...styles.btn, ...styles.driveBtn }}
+          className="share-btn"
+          style={{ background: '#4285f4', color: '#fff' }}
           onClick={handleDriveSave}
           disabled={uploading}
           title="Google Drive に保存"
@@ -131,11 +107,14 @@ const SharePanel: React.FC<SharePanelProps> = ({ onExportImage }) => {
         </button>
 
         <button
-          style={{ ...styles.btn, ...styles.settingsBtn }}
+          className="share-btn"
+          style={{ background: '#2a2a4a', color: '#b0b0d0', padding: '8px 12px' }}
           onClick={() => setShowSettings(true)}
           title="設定"
         >
-          ⚙
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+            <circle cx="12" cy="12" r="3"/><path d="M12 1v2m0 18v2m-9-11h2m18 0h2m-3.3-6.7-1.4 1.4M6.7 17.3l-1.4 1.4m0-13.4 1.4 1.4m10.6 10.6 1.4 1.4"/>
+          </svg>
         </button>
 
         {status && (

@@ -19,16 +19,43 @@ interface ToolbarProps {
   stepCounter: number
 }
 
-const TOOLS: { type: ToolType; label: string; icon: string }[] = [
-  { type: 'select', label: '選択', icon: '↖' },
-  { type: 'pen', label: 'ペン', icon: '✏' },
-  { type: 'text', label: 'テキスト', icon: 'T' },
-  { type: 'arrow', label: '矢印', icon: '→' },
-  { type: 'rect', label: '矩形', icon: '□' },
-  { type: 'ellipse', label: '楕円', icon: '○' },
-  { type: 'mosaic', label: 'モザイク', icon: '▦' },
-  { type: 'step', label: 'ステップ番号', icon: '#' },
-  { type: 'badge', label: 'バッジ', icon: '!' },
+const ToolIcon: React.FC<{ type: ToolType; stepCounter?: number }> = ({ type, stepCounter }) => {
+  const props = { width: 18, height: 18, viewBox: '0 0 24 24', fill: 'none', stroke: 'currentColor', strokeWidth: 2, strokeLinecap: 'round' as const, strokeLinejoin: 'round' as const }
+
+  switch (type) {
+    case 'select':
+      return <svg {...props}><path d="M3 3l7.07 16.97 2.51-7.39 7.39-2.51L3 3z"/><path d="M13 13l6 6"/></svg>
+    case 'pen':
+      return <svg {...props}><path d="M17 3a2.85 2.83 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z"/></svg>
+    case 'text':
+      return <svg {...props} strokeWidth={2.5}><path d="M6 4h12"/><path d="M12 4v16"/></svg>
+    case 'arrow':
+      return <svg {...props}><path d="M5 12h14"/><path d="m12 5 7 7-7 7"/></svg>
+    case 'rect':
+      return <svg {...props}><rect x="3" y="3" width="18" height="18" rx="2"/></svg>
+    case 'ellipse':
+      return <svg {...props}><ellipse cx="12" cy="12" rx="10" ry="8"/></svg>
+    case 'mosaic':
+      return <svg {...props}><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/></svg>
+    case 'step':
+      return <span style={{ fontSize: 14, fontWeight: 800, fontFamily: 'monospace' }}>{stepCounter}</span>
+    case 'badge':
+      return <svg {...props}><path d="M12 2L3 7v6c0 5.25 3.75 10.13 9 11.38C17.25 23.13 21 18.25 21 13V7l-9-5z"/></svg>
+    default:
+      return null
+  }
+}
+
+const TOOLS: { type: ToolType; label: string; shortcut: string }[] = [
+  { type: 'select', label: '選択', shortcut: 'V' },
+  { type: 'pen', label: 'ペン', shortcut: 'P' },
+  { type: 'text', label: 'テキスト', shortcut: 'T' },
+  { type: 'arrow', label: '矢印', shortcut: 'A' },
+  { type: 'rect', label: '矩形', shortcut: 'R' },
+  { type: 'ellipse', label: '楕円', shortcut: 'E' },
+  { type: 'mosaic', label: 'モザイク', shortcut: 'M' },
+  { type: 'step', label: 'ステップ番号', shortcut: 'S' },
+  { type: 'badge', label: 'バッジ', shortcut: 'B' },
 ]
 
 const BADGE_KINDS: { kind: BadgeKind; label: string; bg: string }[] = [
@@ -39,123 +66,11 @@ const BADGE_KINDS: { kind: BadgeKind; label: string; bg: string }[] = [
   { kind: 'BUG', label: 'BUG', bg: '#ff9100' },
 ]
 
-// High-visibility fluorescent + standard colors for dark/light backgrounds
+// High-visibility fluorescent + standard colors
 const PRESET_COLORS = [
-  '#FF0055', // neon pink (hot pink)
-  '#FF3300', // neon red-orange
-  '#FF6600', // bright orange
-  '#FFFF00', // neon yellow
-  '#39FF14', // neon green
-  '#00FFFF', // cyan
-  '#0066FF', // vivid blue
-  '#FF00FF', // magenta
-  '#FFFFFF', // white
-  '#000000', // black
+  '#FF0055', '#FF3300', '#FF6600', '#FFFF00', '#39FF14',
+  '#00FFFF', '#0066FF', '#FF00FF', '#FFFFFF', '#000000',
 ]
-
-const styles: Record<string, React.CSSProperties> = {
-  container: {
-    display: 'flex',
-    flexDirection: 'column',
-    gap: 6,
-    alignItems: 'center',
-  },
-  toolbar: {
-    display: 'flex',
-    alignItems: 'center',
-    gap: 6,
-    padding: '6px 10px',
-    background: '#1a1a2e',
-    borderRadius: 8,
-    boxShadow: '0 2px 12px rgba(0,0,0,0.4)',
-    border: '1px solid #2a2a4a',
-    flexWrap: 'wrap' as const,
-    justifyContent: 'center',
-  },
-  toolBtn: {
-    width: 42,
-    height: 42,
-    border: '2px solid transparent',
-    borderRadius: 6,
-    background: 'transparent',
-    color: '#b0b0d0',
-    fontSize: 17,
-    cursor: 'pointer',
-    display: 'flex',
-    alignItems: 'center',
-    justifyContent: 'center',
-    transition: 'all 0.15s',
-  },
-  toolBtnActive: {
-    background: '#2a2a4a',
-    borderColor: '#00FFFF',
-    color: '#00FFFF',
-  },
-  divider: {
-    width: 1,
-    height: 26,
-    background: '#2a2a4a',
-    margin: '0 3px',
-  },
-  colorBtn: {
-    width: 20,
-    height: 20,
-    borderRadius: '50%',
-    border: '2px solid transparent',
-    cursor: 'pointer',
-    transition: 'transform 0.15s',
-  },
-  colorBtnActive: {
-    border: '2px solid #fff',
-    transform: 'scale(1.25)',
-    boxShadow: '0 0 6px rgba(255,255,255,0.5)',
-  },
-  slider: {
-    width: 50,
-    accentColor: '#00FFFF',
-  },
-  undoRedoBtn: {
-    width: 30,
-    height: 30,
-    border: 'none',
-    borderRadius: 6,
-    background: 'transparent',
-    color: '#b0b0d0',
-    fontSize: 15,
-    cursor: 'pointer',
-    display: 'flex',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  disabled: {
-    opacity: 0.3,
-    cursor: 'default',
-  },
-  label: {
-    color: '#6c7086',
-    fontSize: 10,
-    whiteSpace: 'nowrap' as const,
-  },
-  badgeRow: {
-    display: 'flex',
-    alignItems: 'center',
-    gap: 4,
-    padding: '4px 10px',
-    background: '#1a1a2e',
-    borderRadius: 6,
-    border: '1px solid #2a2a4a',
-  },
-  badgeBtn: {
-    padding: '3px 8px',
-    borderRadius: 4,
-    border: '2px solid transparent',
-    cursor: 'pointer',
-    fontSize: 11,
-    fontWeight: 700,
-    fontFamily: 'monospace',
-    transition: 'all 0.15s',
-  },
-}
 
 const Toolbar: React.FC<ToolbarProps> = ({
   activeTool,
@@ -175,91 +90,95 @@ const Toolbar: React.FC<ToolbarProps> = ({
   stepCounter,
 }) => {
   return (
-    <div style={styles.container}>
-      <div style={styles.toolbar}>
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 6, alignItems: 'center' }}>
+      <div style={{
+        display: 'flex',
+        alignItems: 'center',
+        gap: 6,
+        padding: '6px 10px',
+        background: '#1a1a2e',
+        borderRadius: 8,
+        boxShadow: '0 2px 12px rgba(0,0,0,0.4)',
+        border: '1px solid #2a2a4a',
+        flexWrap: 'wrap',
+        justifyContent: 'center',
+      }}>
         {/* Tool buttons */}
         {TOOLS.map((tool) => (
           <button
             key={tool.type}
-            style={{
-              ...styles.toolBtn,
-              ...(activeTool === tool.type ? styles.toolBtnActive : {}),
-            }}
+            className={`tool-btn ${activeTool === tool.type ? 'active' : ''}`}
             onClick={() => onToolChange(tool.type)}
-            title={tool.label}
+            title={`${tool.label} (${tool.shortcut})`}
           >
-            {tool.type === 'step' ? (
-              <span style={{ fontSize: 12, fontWeight: 800, fontFamily: 'monospace' }}>
-                {stepCounter}
-              </span>
-            ) : (
-              tool.icon
-            )}
+            <ToolIcon type={tool.type} stepCounter={stepCounter} />
           </button>
         ))}
 
-        <div style={styles.divider} />
+        <div style={{ width: 1, height: 26, background: '#2a2a4a', margin: '0 3px' }} />
 
         {/* Color palette */}
-        <div style={{ display: 'flex', gap: 2, alignItems: 'center', flexWrap: 'wrap' }}>
+        <div style={{ display: 'flex', gap: 3, alignItems: 'center', flexWrap: 'wrap' }}>
           {PRESET_COLORS.map((c) => (
             <button
               key={c}
-              style={{
-                ...styles.colorBtn,
-                background: c,
-                ...(color === c ? styles.colorBtnActive : {}),
-              }}
+              className={`color-btn ${color === c ? 'active' : ''}`}
+              style={{ background: c }}
               onClick={() => onColorChange(c)}
               title={c}
             />
           ))}
+          <input
+            type="color"
+            className="color-picker-input"
+            value={color}
+            onChange={(e) => onColorChange(e.target.value)}
+            title="カスタムカラー"
+          />
         </div>
 
-        <div style={styles.divider} />
+        <div style={{ width: 1, height: 26, background: '#2a2a4a', margin: '0 3px' }} />
 
         {/* Stroke width (for pen/arrow/rect/ellipse) */}
         {activeTool !== 'text' &&
           activeTool !== 'select' &&
           activeTool !== 'step' &&
           activeTool !== 'badge' && (
-            <div style={{ display: 'flex', alignItems: 'center', gap: 3 }}>
-              <span style={styles.label}>太さ</span>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+              <span style={{ color: '#6c7086', fontSize: 10, whiteSpace: 'nowrap' }}>太さ</span>
               <input
                 type="range"
+                className="ms-slider"
                 min={1}
                 max={20}
                 value={strokeWidth}
                 onChange={(e) => onStrokeWidthChange(Number(e.target.value))}
-                style={styles.slider}
               />
+              <span style={{ color: '#6c7086', fontSize: 10, width: 18, textAlign: 'center', fontFamily: 'monospace' }}>{strokeWidth}</span>
             </div>
           )}
 
         {/* Font size (for text) */}
         {activeTool === 'text' && (
-          <div style={{ display: 'flex', alignItems: 'center', gap: 3 }}>
-            <span style={styles.label}>サイズ</span>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+            <span style={{ color: '#6c7086', fontSize: 10, whiteSpace: 'nowrap' }}>サイズ</span>
             <input
               type="range"
+              className="ms-slider"
               min={12}
               max={72}
               value={fontSize}
               onChange={(e) => onFontSizeChange(Number(e.target.value))}
-              style={styles.slider}
             />
-            <span style={{ ...styles.label, width: 22, textAlign: 'center' }}>{fontSize}</span>
+            <span style={{ color: '#6c7086', fontSize: 10, width: 22, textAlign: 'center', fontFamily: 'monospace' }}>{fontSize}</span>
           </div>
         )}
 
-        <div style={styles.divider} />
+        <div style={{ width: 1, height: 26, background: '#2a2a4a', margin: '0 3px' }} />
 
         {/* Undo/Redo */}
         <button
-          style={{
-            ...styles.undoRedoBtn,
-            ...(canUndo ? {} : styles.disabled),
-          }}
+          className="undo-redo-btn"
           onClick={onUndo}
           disabled={!canUndo}
           title="元に戻す (Ctrl+Z)"
@@ -267,10 +186,7 @@ const Toolbar: React.FC<ToolbarProps> = ({
           ↩
         </button>
         <button
-          style={{
-            ...styles.undoRedoBtn,
-            ...(canRedo ? {} : styles.disabled),
-          }}
+          className="undo-redo-btn"
           onClick={onRedo}
           disabled={!canRedo}
           title="やり直し (Ctrl+Y)"
@@ -281,17 +197,23 @@ const Toolbar: React.FC<ToolbarProps> = ({
 
       {/* Badge kind selector (shown when badge tool is active) */}
       {activeTool === 'badge' && (
-        <div style={styles.badgeRow}>
-          <span style={{ ...styles.label, marginRight: 4 }}>バッジ種類:</span>
+        <div style={{
+          display: 'flex',
+          alignItems: 'center',
+          gap: 4,
+          padding: '4px 10px',
+          background: '#1a1a2e',
+          borderRadius: 6,
+          border: '1px solid #2a2a4a',
+        }}>
+          <span style={{ color: '#6c7086', fontSize: 10, marginRight: 4 }}>バッジ種類:</span>
           {BADGE_KINDS.map((b) => (
             <button
               key={b.kind}
+              className={`badge-btn ${badgeKind === b.kind ? 'active' : ''}`}
               style={{
-                ...styles.badgeBtn,
                 background: b.bg,
                 color: b.kind === 'WARN' || b.kind === 'OK' ? '#000' : '#fff',
-                borderColor: badgeKind === b.kind ? '#fff' : 'transparent',
-                transform: badgeKind === b.kind ? 'scale(1.1)' : 'scale(1)',
               }}
               onClick={() => onBadgeKindChange(b.kind)}
             >

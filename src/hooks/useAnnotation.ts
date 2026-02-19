@@ -111,8 +111,12 @@ export function useAnnotation() {
 
   const pushState = useCallback(
     (newAnnotations: Annotation[]) => {
-      const newHistory = history.slice(0, historyIndex + 1)
+      const MAX_HISTORY = 50
+      let newHistory = history.slice(0, historyIndex + 1)
       newHistory.push(newAnnotations)
+      if (newHistory.length > MAX_HISTORY) {
+        newHistory = newHistory.slice(newHistory.length - MAX_HISTORY)
+      }
       setHistory(newHistory)
       setHistoryIndex(newHistory.length - 1)
       setAnnotations(newAnnotations)

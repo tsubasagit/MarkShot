@@ -193,22 +193,30 @@ const RegionSelector: React.FC<RegionSelectorProps> = ({ mode = 'screenshot' }) 
   }
 
   return (
-    <canvas
-      ref={canvasRef}
-      style={{
-        position: 'fixed',
-        top: 0,
-        left: 0,
-        width: '100vw',
-        height: '100vh',
-        cursor: 'crosshair',
-        zIndex: 9999,
-      }}
-      onMouseDown={handleMouseDown}
-      onMouseMove={handleMouseMove}
-      onMouseUp={handleMouseUp}
-      onContextMenu={handleContextMenu}
-    />
+    <>
+      <canvas
+        ref={canvasRef}
+        style={{
+          position: 'fixed',
+          top: 0,
+          left: 0,
+          width: '100vw',
+          height: '100vh',
+          cursor: 'crosshair',
+          zIndex: 9999,
+        }}
+        onMouseDown={handleMouseDown}
+        onMouseMove={handleMouseMove}
+        onMouseUp={handleMouseUp}
+        onContextMenu={handleContextMenu}
+      />
+      {!isDragging && !region && screenshotImage && (
+        <div className="region-hint">
+          ドラッグして範囲を選択<br />
+          <kbd>右クリック</kbd> or <kbd>Esc</kbd> でキャンセル
+        </div>
+      )}
+    </>
   )
 }
 
