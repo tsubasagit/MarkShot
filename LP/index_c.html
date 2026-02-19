@@ -1,0 +1,975 @@
+<!DOCTYPE html>
+<html lang="ja">
+
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="description" content="MarkShot - スクショごときに時間をかけるな。瞬時に撮って、瞬時に保存。最速スクリーンキャプチャツール。" />
+    <title>MarkShot - スクショに時間をかけるのは、もう終わりだ。</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+        href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&family=Noto+Sans+JP:wght@400;500;600;700;800;900&display=swap"
+        rel="stylesheet" />
+    <link rel="stylesheet" href="assets/css/common.css" />
+    <style>
+        /* ===== VARIANT C: SPEED DEMON ===== */
+        :root {
+            --c-bg: #0C0C0C;
+            --c-surface: #141414;
+            --c-surface-2: #1C1C1C;
+            --c-text: #FAFAFA;
+            --c-text-secondary: #888888;
+            --c-red: #FF2D2D;
+            --c-red-dark: #CC0000;
+            --c-red-glow: rgba(255, 45, 45, 0.2);
+            --c-border: rgba(255, 255, 255, 0.08);
+        }
+
+        body {
+            font-family: 'Inter', 'Noto Sans JP', sans-serif;
+            background: var(--c-bg);
+            color: var(--c-text);
+        }
+
+        /* --- NAV --- */
+        .nav {
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            z-index: 100;
+            padding: 18px 0;
+            transition: all 0.3s ease;
+        }
+
+        .nav.scrolled {
+            background: rgba(12, 12, 12, 0.95);
+            backdrop-filter: blur(16px);
+            -webkit-backdrop-filter: blur(16px);
+            border-bottom: 1px solid var(--c-border);
+        }
+
+        .nav .container {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+        }
+
+        .nav-logo {
+            font-size: 1.5rem;
+            font-weight: 900;
+            color: var(--c-text);
+            letter-spacing: -0.04em;
+        }
+
+        .nav-logo span {
+            color: var(--c-red);
+        }
+
+        .nav-links {
+            display: flex;
+            gap: 32px;
+            align-items: center;
+        }
+
+        .nav-links a {
+            font-size: 0.9rem;
+            font-weight: 500;
+            color: var(--c-text-secondary);
+            transition: color 0.2s ease;
+        }
+
+        .nav-links a:hover {
+            color: var(--c-text);
+        }
+
+        .nav-cta {
+            background: var(--c-red) !important;
+            color: #fff !important;
+            padding: 10px 28px !important;
+            border-radius: 8px;
+            font-weight: 700 !important;
+        }
+
+        /* --- HERO --- */
+        .hero {
+            min-height: 100vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            text-align: center;
+            padding-top: 80px;
+            position: relative;
+            overflow: hidden;
+        }
+
+        /* Speed lines background */
+        .speed-lines {
+            position: absolute;
+            inset: 0;
+            overflow: hidden;
+            opacity: 0.15;
+        }
+
+        .speed-line {
+            position: absolute;
+            height: 1px;
+            background: linear-gradient(90deg, transparent 0%, var(--c-red) 40%, var(--c-red) 60%, transparent 100%);
+            animation: speed-flash 2s linear infinite;
+        }
+
+        .speed-line:nth-child(1) {
+            top: 15%;
+            width: 60%;
+            left: -60%;
+            animation-delay: 0s;
+            animation-duration: 1.5s;
+        }
+
+        .speed-line:nth-child(2) {
+            top: 30%;
+            width: 80%;
+            left: -80%;
+            animation-delay: 0.3s;
+            animation-duration: 1.8s;
+        }
+
+        .speed-line:nth-child(3) {
+            top: 45%;
+            width: 50%;
+            left: -50%;
+            animation-delay: 0.7s;
+            animation-duration: 1.3s;
+        }
+
+        .speed-line:nth-child(4) {
+            top: 60%;
+            width: 70%;
+            left: -70%;
+            animation-delay: 0.15s;
+            animation-duration: 1.6s;
+        }
+
+        .speed-line:nth-child(5) {
+            top: 75%;
+            width: 90%;
+            left: -90%;
+            animation-delay: 0.5s;
+            animation-duration: 2s;
+        }
+
+        .speed-line:nth-child(6) {
+            top: 88%;
+            width: 40%;
+            left: -40%;
+            animation-delay: 0.9s;
+            animation-duration: 1.2s;
+        }
+
+        @keyframes speed-flash {
+            0% {
+                transform: translateX(0);
+            }
+
+            100% {
+                transform: translateX(calc(100vw + 100%));
+            }
+        }
+
+        /* Red glow pulse */
+        .hero-glow {
+            position: absolute;
+            width: 400px;
+            height: 400px;
+            background: radial-gradient(circle, rgba(255, 45, 45, 0.15) 0%, transparent 70%);
+            border-radius: 50%;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            animation: glow-pulse 3s ease-in-out infinite;
+        }
+
+        @keyframes glow-pulse {
+
+            0%,
+            100% {
+                transform: translate(-50%, -50%) scale(1);
+                opacity: 0.5;
+            }
+
+            50% {
+                transform: translate(-50%, -50%) scale(1.3);
+                opacity: 0.8;
+            }
+        }
+
+        .hero-content {
+            position: relative;
+            z-index: 2;
+            max-width: 1000px;
+        }
+
+        .hero-tag {
+            display: inline-block;
+            background: var(--c-red);
+            color: #fff;
+            padding: 6px 18px;
+            border-radius: 4px;
+            font-size: 0.8rem;
+            font-weight: 800;
+            text-transform: uppercase;
+            letter-spacing: 0.15em;
+            margin-bottom: 40px;
+        }
+
+        .hero h1 {
+            font-size: 5.5rem;
+            font-weight: 900;
+            line-height: 1.0;
+            margin-bottom: 32px;
+            letter-spacing: -0.04em;
+            text-transform: none;
+        }
+
+        .hero .strike {
+            text-decoration: line-through;
+            color: var(--c-text-secondary);
+            opacity: 0.5;
+        }
+
+        .hero .highlight {
+            color: var(--c-red);
+            position: relative;
+        }
+
+        .hero .highlight::after {
+            content: '';
+            position: absolute;
+            bottom: -4px;
+            left: 0;
+            right: 0;
+            height: 4px;
+            background: var(--c-red);
+            border-radius: 2px;
+        }
+
+        .hero p {
+            font-size: 1.3rem;
+            color: var(--c-text-secondary);
+            line-height: 1.7;
+            max-width: 700px;
+            margin: 0 auto 48px;
+        }
+
+        .hero .cta-btn {
+            background: var(--c-red);
+            color: #fff;
+            border-radius: 12px;
+            box-shadow: 0 8px 40px var(--c-red-glow);
+            font-size: 1.2rem;
+            padding: 22px 56px;
+        }
+
+        .hero .cta-btn:hover {
+            background: var(--c-red-dark);
+            box-shadow: 0 12px 50px rgba(255, 45, 45, 0.35);
+        }
+
+        /* --- COMPARISON SECTION --- */
+        .comparison {
+            padding: 120px 0;
+        }
+
+        .comparison-label {
+            text-align: center;
+            font-size: 0.85rem;
+            font-weight: 800;
+            color: var(--c-red);
+            text-transform: uppercase;
+            letter-spacing: 0.15em;
+            margin-bottom: 16px;
+        }
+
+        .comparison-title {
+            text-align: center;
+            font-size: 3rem;
+            font-weight: 900;
+            margin-bottom: 60px;
+            letter-spacing: -0.03em;
+        }
+
+        .comparison-grid {
+            display: grid;
+            grid-template-columns: 1fr auto 1fr;
+            gap: 40px;
+            align-items: start;
+        }
+
+        .comparison-col {
+            padding: 40px;
+            border-radius: 20px;
+        }
+
+        .comparison-col.old {
+            background: var(--c-surface);
+            border: 1px solid var(--c-border);
+        }
+
+        .comparison-col.new {
+            background: linear-gradient(135deg, rgba(255, 45, 45, 0.08), rgba(255, 45, 45, 0.02));
+            border: 1px solid rgba(255, 45, 45, 0.2);
+            box-shadow: 0 0 60px rgba(255, 45, 45, 0.05);
+        }
+
+        .comparison-col-header {
+            font-size: 1.1rem;
+            font-weight: 800;
+            text-transform: uppercase;
+            letter-spacing: 0.1em;
+            margin-bottom: 32px;
+            padding-bottom: 16px;
+            border-bottom: 2px solid;
+        }
+
+        .comparison-col.old .comparison-col-header {
+            color: var(--c-text-secondary);
+            border-color: var(--c-border);
+        }
+
+        .comparison-col.new .comparison-col-header {
+            color: var(--c-red);
+            border-color: var(--c-red);
+        }
+
+        .comparison-item {
+            display: flex;
+            align-items: flex-start;
+            gap: 16px;
+            margin-bottom: 28px;
+        }
+
+        .comparison-item:last-child {
+            margin-bottom: 0;
+        }
+
+        .comparison-icon {
+            width: 32px;
+            height: 32px;
+            border-radius: 8px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            flex-shrink: 0;
+            margin-top: 2px;
+        }
+
+        .comparison-col.old .comparison-icon {
+            background: rgba(255, 255, 255, 0.05);
+            color: var(--c-text-secondary);
+        }
+
+        .comparison-col.new .comparison-icon {
+            background: rgba(255, 45, 45, 0.15);
+            color: var(--c-red);
+        }
+
+        .comparison-item-text h4 {
+            font-size: 1rem;
+            font-weight: 700;
+            margin-bottom: 4px;
+        }
+
+        .comparison-col.old .comparison-item-text h4 {
+            color: var(--c-text-secondary);
+        }
+
+        .comparison-item-text p {
+            font-size: 0.85rem;
+            color: var(--c-text-secondary);
+            line-height: 1.6;
+        }
+
+        .comparison-vs {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding-top: 80px;
+        }
+
+        .vs-badge {
+            width: 60px;
+            height: 60px;
+            border-radius: 50%;
+            background: var(--c-surface-2);
+            border: 2px solid var(--c-border);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 1rem;
+            font-weight: 900;
+            color: var(--c-text-secondary);
+        }
+
+        /* --- SPEED METRICS --- */
+        .metrics {
+            padding: 120px 0;
+            background: var(--c-surface);
+        }
+
+        .metrics-label {
+            text-align: center;
+            font-size: 0.85rem;
+            font-weight: 800;
+            color: var(--c-red);
+            text-transform: uppercase;
+            letter-spacing: 0.15em;
+            margin-bottom: 16px;
+        }
+
+        .metrics-title {
+            text-align: center;
+            font-size: 3rem;
+            font-weight: 900;
+            margin-bottom: 60px;
+            letter-spacing: -0.03em;
+        }
+
+        .metrics-grid {
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            gap: 32px;
+        }
+
+        .metric-card {
+            background: var(--c-bg);
+            border: 1px solid var(--c-border);
+            border-radius: 20px;
+            padding: 48px 32px;
+            text-align: center;
+            position: relative;
+            overflow: hidden;
+            transition: all 0.3s ease;
+        }
+
+        .metric-card:hover {
+            border-color: rgba(255, 45, 45, 0.3);
+            transform: translateY(-4px);
+        }
+
+        .metric-card::after {
+            content: '';
+            position: absolute;
+            bottom: 0;
+            left: 0;
+            right: 0;
+            height: 3px;
+            background: var(--c-red);
+            transform: scaleX(0);
+            transition: transform 0.4s ease;
+        }
+
+        .metric-card:hover::after {
+            transform: scaleX(1);
+        }
+
+        .metric-value {
+            font-size: 4rem;
+            font-weight: 900;
+            color: var(--c-red);
+            line-height: 1;
+            margin-bottom: 12px;
+            letter-spacing: -0.04em;
+        }
+
+        .metric-unit {
+            font-size: 1.5rem;
+            font-weight: 700;
+            color: var(--c-text-secondary);
+        }
+
+        .metric-label {
+            font-size: 1rem;
+            color: var(--c-text-secondary);
+            font-weight: 500;
+            margin-bottom: 16px;
+        }
+
+        .metric-bar {
+            height: 4px;
+            background: var(--c-surface-2);
+            border-radius: 2px;
+            overflow: hidden;
+            max-width: 200px;
+            margin: 0 auto;
+        }
+
+        .metric-bar-fill {
+            height: 100%;
+            background: var(--c-red);
+            border-radius: 2px;
+            animation: bar-fill 2s ease forwards;
+            transform-origin: left;
+        }
+
+        .metric-bar-fill.fast {
+            animation-delay: 0.2s;
+            width: 5%;
+        }
+
+        .metric-bar-fill.async {
+            animation-delay: 0.4s;
+            width: 0%;
+        }
+
+        .metric-bar-fill.secure {
+            animation-delay: 0.6s;
+            width: 95%;
+        }
+
+        @keyframes bar-fill {
+            from {
+                transform: scaleX(0);
+            }
+
+            to {
+                transform: scaleX(1);
+            }
+        }
+
+        /* --- TESTIMONIAL --- */
+        .testimonial {
+            padding: 120px 0;
+        }
+
+        .testimonial-box {
+            max-width: 800px;
+            margin: 0 auto;
+            text-align: center;
+        }
+
+        .testimonial-quote {
+            font-size: 2rem;
+            font-weight: 700;
+            line-height: 1.5;
+            margin-bottom: 32px;
+            letter-spacing: -0.02em;
+            position: relative;
+        }
+
+        .testimonial-quote::before {
+            content: '"';
+            font-size: 5rem;
+            color: var(--c-red);
+            position: absolute;
+            top: -40px;
+            left: -20px;
+            font-family: Georgia, serif;
+            opacity: 0.3;
+        }
+
+        .testimonial-quote .red {
+            color: var(--c-red);
+        }
+
+        .testimonial-author {
+            font-size: 0.95rem;
+            color: var(--c-text-secondary);
+        }
+
+        .testimonial-author strong {
+            color: var(--c-text);
+        }
+
+        /* --- CTA --- */
+        .cta-section {
+            padding: 120px 0;
+        }
+
+        .cta-final {
+            text-align: center;
+            padding: 100px 60px;
+            position: relative;
+            border-radius: 24px;
+            background: var(--c-surface);
+            border: 1px solid var(--c-border);
+            overflow: hidden;
+        }
+
+        .cta-final::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            height: 3px;
+            background: linear-gradient(90deg, transparent, var(--c-red), transparent);
+        }
+
+        .cta-final h2 {
+            font-size: 3rem;
+            font-weight: 900;
+            margin-bottom: 16px;
+            letter-spacing: -0.03em;
+            position: relative;
+        }
+
+        .cta-final p {
+            font-size: 1.15rem;
+            color: var(--c-text-secondary);
+            margin-bottom: 48px;
+            position: relative;
+        }
+
+        .cta-final .cta-btn {
+            background: var(--c-red);
+            color: #fff;
+            border-radius: 12px;
+            box-shadow: 0 8px 40px var(--c-red-glow);
+            font-size: 1.1rem;
+            position: relative;
+        }
+
+        .cta-final .cta-btn:hover {
+            background: var(--c-red-dark);
+        }
+
+        /* --- FOOTER --- */
+        .footer {
+            background: var(--c-bg);
+            border-top: 1px solid var(--c-border);
+            padding: 40px 0;
+            text-align: center;
+        }
+
+        .footer-logo {
+            font-size: 1.3rem;
+            font-weight: 900;
+            color: var(--c-text);
+            margin-bottom: 12px;
+        }
+
+        .footer-logo span {
+            color: var(--c-red);
+        }
+
+        .footer p {
+            font-size: 0.85rem;
+            color: var(--c-text-secondary);
+        }
+
+        /* RESPONSIVE */
+        @media (max-width: 1024px) {
+            .comparison-grid {
+                grid-template-columns: 1fr;
+            }
+
+            .comparison-vs {
+                padding-top: 0;
+            }
+
+            .vs-badge {
+                display: none;
+            }
+        }
+
+        @media (max-width: 768px) {
+            .nav-links {
+                display: none;
+            }
+
+            .hero h1 {
+                font-size: 3rem;
+            }
+
+            .comparison-title,
+            .metrics-title {
+                font-size: 2rem;
+            }
+
+            .metrics-grid {
+                grid-template-columns: 1fr;
+            }
+
+            .metric-value {
+                font-size: 3rem;
+            }
+
+            .testimonial-quote {
+                font-size: 1.4rem;
+            }
+
+            .cta-final {
+                padding: 60px 24px;
+            }
+
+            .cta-final h2 {
+                font-size: 2rem;
+            }
+        }
+    </style>
+</head>
+
+<body>
+
+    <!-- ===== NAVIGATION ===== -->
+    <nav class="nav" id="nav">
+        <div class="container">
+            <div class="nav-logo">Mark<span>Shot</span></div>
+            <div class="nav-links">
+                <a href="#comparison">比較</a>
+                <a href="#metrics">スペック</a>
+                <a href="#download" class="nav-cta">ダウンロード</a>
+            </div>
+        </div>
+    </nav>
+
+    <!-- ===== HERO ===== -->
+    <section class="hero">
+        <div class="speed-lines">
+            <div class="speed-line"></div>
+            <div class="speed-line"></div>
+            <div class="speed-line"></div>
+            <div class="speed-line"></div>
+            <div class="speed-line"></div>
+            <div class="speed-line"></div>
+        </div>
+        <div class="hero-glow"></div>
+
+        <div class="hero-content">
+            <div class="hero-tag">最速キャプチャツール</div>
+            <h1>
+                <span class="strike">スクショに時間を<br />かける</span>のは、<br />
+                <span class="highlight">もう終わりだ。</span>
+            </h1>
+            <p>
+                撮った瞬間に保存完了。ウィンドウを閉じた瞬間に消える。<br />
+                待ち時間ゼロ。あなたの時間を1秒たりとも無駄にしない。
+            </p>
+            <a href="#download" class="cta-btn">
+                今すぐダウンロード
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"
+                    style="margin-left:10px">
+                    <path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z" />
+                </svg>
+            </a>
+        </div>
+    </section>
+
+    <!-- ===== COMPARISON ===== -->
+    <section class="comparison" id="comparison">
+        <div class="container">
+            <div class="comparison-label">Before vs After</div>
+            <h2 class="comparison-title">もう戻れない。</h2>
+
+            <div class="comparison-grid">
+                <!-- OLD WAY -->
+                <div class="comparison-col old">
+                    <div class="comparison-col-header">従来のツール</div>
+
+                    <div class="comparison-item">
+                        <div class="comparison-icon">
+                            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                                stroke-width="2">
+                                <line x1="18" y1="6" x2="6" y2="18" />
+                                <line x1="6" y1="6" x2="18" y2="18" />
+                            </svg>
+                        </div>
+                        <div class="comparison-item-text">
+                            <h4>起動に数秒かかる</h4>
+                            <p>アプリ起動→キャプチャ画面まで待つ。その間に撮りたかった画面が消える。</p>
+                        </div>
+                    </div>
+
+                    <div class="comparison-item">
+                        <div class="comparison-icon">
+                            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                                stroke-width="2">
+                                <line x1="18" y1="6" x2="6" y2="18" />
+                                <line x1="6" y1="6" x2="18" y2="18" />
+                            </svg>
+                        </div>
+                        <div class="comparison-item-text">
+                            <h4>保存ダイアログが出る</h4>
+                            <p>毎回「名前を付けて保存」ダイアログ。ファイル名を考え、場所を選ぶ手間。</p>
+                        </div>
+                    </div>
+
+                    <div class="comparison-item">
+                        <div class="comparison-icon">
+                            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                                stroke-width="2">
+                                <line x1="18" y1="6" x2="6" y2="18" />
+                                <line x1="6" y1="6" x2="18" y2="18" />
+                            </svg>
+                        </div>
+                        <div class="comparison-item-text">
+                            <h4>閉じると保存できない</h4>
+                            <p>保存前にウィンドウを閉じると、キャプチャが消失。やり直し。</p>
+                        </div>
+                    </div>
+
+                    <div class="comparison-item">
+                        <div class="comparison-icon">
+                            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                                stroke-width="2">
+                                <line x1="18" y1="6" x2="6" y2="18" />
+                                <line x1="6" y1="6" x2="18" y2="18" />
+                            </svg>
+                        </div>
+                        <div class="comparison-item-text">
+                            <h4>共有が面倒</h4>
+                            <p>ファイルを探す→アップロード→リンクをコピー。3ステップ以上の手間。</p>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- VS -->
+                <div class="comparison-vs">
+                    <div class="vs-badge">VS</div>
+                </div>
+
+                <!-- NEW WAY -->
+                <div class="comparison-col new">
+                    <div class="comparison-col-header">MarkShot</div>
+
+                    <div class="comparison-item">
+                        <div class="comparison-icon">
+                            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                                stroke-width="2.5">
+                                <path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z" />
+                            </svg>
+                        </div>
+                        <div class="comparison-item-text">
+                            <h4>ショートカットで即起動</h4>
+                            <p>Ctrl+Shift+S で瞬時にオーバーレイ表示。何をしていても即キャプチャ。</p>
+                        </div>
+                    </div>
+
+                    <div class="comparison-item">
+                        <div class="comparison-icon">
+                            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                                stroke-width="2.5">
+                                <path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z" />
+                            </svg>
+                        </div>
+                        <div class="comparison-item-text">
+                            <h4>自動保存、ゼロ操作</h4>
+                            <p>ファイル名も保存先も自動。ダイアログは一切出ない。</p>
+                        </div>
+                    </div>
+
+                    <div class="comparison-item">
+                        <div class="comparison-icon">
+                            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                                stroke-width="2.5">
+                                <path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z" />
+                            </svg>
+                        </div>
+                        <div class="comparison-item-text">
+                            <h4>閉じる＝保存完了</h4>
+                            <p>ウィンドウを閉じた瞬間に非表示。保存はバックグラウンドで完了。</p>
+                        </div>
+                    </div>
+
+                    <div class="comparison-item">
+                        <div class="comparison-icon">
+                            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                                stroke-width="2.5">
+                                <path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z" />
+                            </svg>
+                        </div>
+                        <div class="comparison-item-text">
+                            <h4>ワンクリック共有</h4>
+                            <p>Google Driveにワンクリック。共有リンクも即生成。</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- ===== SPEED METRICS ===== -->
+    <section class="metrics" id="metrics">
+        <div class="container">
+            <div class="metrics-label">Performance</div>
+            <h2 class="metrics-title">数字が語る、速さ。</h2>
+
+            <div class="metrics-grid">
+                <div class="metric-card">
+                    <div class="metric-value">0.1<span class="metric-unit">s</span></div>
+                    <div class="metric-label">ウィンドウ非表示速度</div>
+                    <div class="metric-bar">
+                        <div class="metric-bar-fill fast"></div>
+                    </div>
+                </div>
+
+                <div class="metric-card">
+                    <div class="metric-value">0<span class="metric-unit">待ち</span></div>
+                    <div class="metric-label">保存時のUIブロック</div>
+                    <div class="metric-bar">
+                        <div class="metric-bar-fill async"></div>
+                    </div>
+                </div>
+
+                <div class="metric-card">
+                    <div class="metric-value">CSP<span class="metric-unit">+</span></div>
+                    <div class="metric-label">セキュリティスコア</div>
+                    <div class="metric-bar">
+                        <div class="metric-bar-fill secure"></div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- ===== TESTIMONIAL ===== -->
+    <section class="testimonial">
+        <div class="container">
+            <div class="testimonial-box">
+                <div class="testimonial-quote">
+                    スクショを撮って、書き込んで、閉じる。<br />
+                    たったそれだけのことに <span class="red">5秒以上</span> かけていた自分が信じられない。
+                </div>
+                <div class="testimonial-author">
+                    — <strong>MarkShot ユーザーの声</strong>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- ===== CTA ===== -->
+    <section class="cta-section" id="download">
+        <div class="container">
+            <div class="cta-final">
+                <h2>仕事に戻ろう。</h2>
+                <p>スクショは MarkShot に任せて、あなたは本来の作業に集中を。</p>
+                <a href="#" class="cta-btn">
+                    今すぐダウンロード
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"
+                        style="margin-left:10px">
+                        <path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z" />
+                    </svg>
+                </a>
+            </div>
+        </div>
+    </section>
+
+    <!-- ===== FOOTER ===== -->
+    <footer class="footer">
+        <div class="container">
+            <div class="footer-logo">Mark<span>Shot</span></div>
+            <p>&copy; 2026 MarkShot. All rights reserved.</p>
+        </div>
+    </footer>
+
+    <script>
+        const nav = document.getElementById('nav');
+        window.addEventListener('scroll', () => {
+            nav.classList.toggle('scrolled', window.scrollY > 20);
+        });
+    </script>
+
+</body>
+
+</html>

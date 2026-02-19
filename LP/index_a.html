@@ -1,0 +1,1055 @@
+<!DOCTYPE html>
+<html lang="ja">
+
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="description" content="MarkShot - スクリーンショット、注釈、GIF、動画キャプチャ。すべてを一瞬で。高速スクリーンキャプチャツール。" />
+    <title>MarkShot - 撮る、書く、保存する。すべてを一瞬で。</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+        href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&family=Noto+Sans+JP:wght@400;500;600;700;800;900&display=swap"
+        rel="stylesheet" />
+    <link rel="stylesheet" href="assets/css/common.css" />
+    <style>
+        /* ===== VARIANT A: FEATURE-FOCUSED ===== */
+        :root {
+            --a-primary: #2563EB;
+            --a-primary-dark: #1D4ED8;
+            --a-primary-light: #3B82F6;
+            --a-accent: #0EA5E9;
+            --a-bg: #F8FAFC;
+            --a-surface: #FFFFFF;
+            --a-text: #0F172A;
+            --a-text-secondary: #475569;
+            --a-border: #E2E8F0;
+        }
+
+        body {
+            font-family: 'Inter', 'Noto Sans JP', sans-serif;
+            background: var(--a-bg);
+            color: var(--a-text);
+        }
+
+        /* --- NAV --- */
+        .nav {
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            z-index: 100;
+            background: rgba(248, 250, 252, 0.85);
+            backdrop-filter: blur(16px);
+            -webkit-backdrop-filter: blur(16px);
+            border-bottom: 1px solid var(--a-border);
+            padding: 16px 0;
+            transition: box-shadow 0.3s ease;
+        }
+
+        .nav.scrolled {
+            box-shadow: 0 4px 20px rgba(0, 0, 0, 0.06);
+        }
+
+        .nav .container {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+        }
+
+        .nav-logo {
+            font-size: 1.5rem;
+            font-weight: 800;
+            color: var(--a-primary);
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .nav-logo svg {
+            width: 32px;
+            height: 32px;
+        }
+
+        .nav-links {
+            display: flex;
+            gap: 32px;
+            align-items: center;
+        }
+
+        .nav-links a {
+            font-size: 0.9rem;
+            font-weight: 500;
+            color: var(--a-text-secondary);
+            transition: color 0.2s ease;
+        }
+
+        .nav-links a:hover {
+            color: var(--a-primary);
+        }
+
+        .nav-cta {
+            background: var(--a-primary);
+            color: #fff !important;
+            padding: 10px 24px !important;
+            border-radius: 10px;
+            font-weight: 600 !important;
+            transition: background 0.2s ease, transform 0.2s ease !important;
+        }
+
+        .nav-cta:hover {
+            background: var(--a-primary-dark);
+            transform: translateY(-1px);
+        }
+
+        /* --- HERO --- */
+        .hero {
+            min-height: 100vh;
+            display: flex;
+            align-items: center;
+            padding-top: 80px;
+            background:
+                radial-gradient(ellipse at 20% 50%, rgba(37, 99, 235, 0.08) 0%, transparent 50%),
+                radial-gradient(ellipse at 80% 20%, rgba(14, 165, 233, 0.06) 0%, transparent 50%),
+                var(--a-bg);
+            overflow: hidden;
+            position: relative;
+        }
+
+        .hero .container {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 60px;
+            align-items: center;
+        }
+
+        .hero-badge {
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+            background: linear-gradient(135deg, rgba(37, 99, 235, 0.1), rgba(14, 165, 233, 0.1));
+            border: 1px solid rgba(37, 99, 235, 0.2);
+            border-radius: 100px;
+            padding: 8px 20px;
+            font-size: 0.85rem;
+            font-weight: 600;
+            color: var(--a-primary);
+            margin-bottom: 24px;
+        }
+
+        .hero-badge::before {
+            content: '';
+            width: 8px;
+            height: 8px;
+            background: var(--a-primary);
+            border-radius: 50%;
+            animation: pulse-dot 2s ease-in-out infinite;
+        }
+
+        @keyframes pulse-dot {
+
+            0%,
+            100% {
+                opacity: 1;
+                transform: scale(1);
+            }
+
+            50% {
+                opacity: 0.5;
+                transform: scale(1.3);
+            }
+        }
+
+        .hero h1 {
+            font-size: 3.5rem;
+            font-weight: 900;
+            line-height: 1.15;
+            margin-bottom: 24px;
+            letter-spacing: -0.02em;
+        }
+
+        .hero h1 .gradient-text {
+            background: linear-gradient(135deg, var(--a-primary), var(--a-accent));
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+        }
+
+        .hero p {
+            font-size: 1.15rem;
+            color: var(--a-text-secondary);
+            line-height: 1.8;
+            margin-bottom: 40px;
+            max-width: 520px;
+        }
+
+        .hero-actions {
+            display: flex;
+            gap: 16px;
+            align-items: center;
+        }
+
+        .hero .cta-btn {
+            background: linear-gradient(135deg, var(--a-primary), var(--a-accent));
+            color: #fff;
+            box-shadow: 0 8px 30px rgba(37, 99, 235, 0.3);
+        }
+
+        .hero .cta-btn:hover {
+            box-shadow: 0 12px 40px rgba(37, 99, 235, 0.4);
+        }
+
+        .hero-secondary-btn {
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+            padding: 18px 32px;
+            border-radius: 60px;
+            font-size: 1rem;
+            font-weight: 600;
+            color: var(--a-text);
+            background: var(--a-surface);
+            border: 1px solid var(--a-border);
+            cursor: pointer;
+            transition: all 0.3s ease;
+        }
+
+        .hero-secondary-btn:hover {
+            border-color: var(--a-primary);
+            color: var(--a-primary);
+            transform: translateY(-2px);
+        }
+
+        /* Hero Visual */
+        .hero-visual {
+            position: relative;
+        }
+
+        .hero-mockup {
+            background: var(--a-surface);
+            border-radius: 20px;
+            border: 1px solid var(--a-border);
+            box-shadow:
+                0 20px 60px rgba(0, 0, 0, 0.08),
+                0 0 0 1px rgba(0, 0, 0, 0.03);
+            overflow: hidden;
+            animation: float 6s ease-in-out infinite;
+        }
+
+        @keyframes float {
+
+            0%,
+            100% {
+                transform: translateY(0);
+            }
+
+            50% {
+                transform: translateY(-12px);
+            }
+        }
+
+        .mockup-header {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            padding: 16px 20px;
+            background: #F1F5F9;
+            border-bottom: 1px solid var(--a-border);
+        }
+
+        .mockup-dot {
+            width: 12px;
+            height: 12px;
+            border-radius: 50%;
+        }
+
+        .mockup-dot.red {
+            background: #EF4444;
+        }
+
+        .mockup-dot.yellow {
+            background: #EAB308;
+        }
+
+        .mockup-dot.green {
+            background: #22C55E;
+        }
+
+        .mockup-body {
+            padding: 32px;
+            min-height: 300px;
+            background: linear-gradient(135deg, #EFF6FF, #F0F9FF);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            position: relative;
+        }
+
+        .mockup-canvas {
+            width: 100%;
+            aspect-ratio: 16/10;
+            background: linear-gradient(135deg, #DBEAFE, #E0F2FE);
+            border-radius: 12px;
+            border: 2px dashed rgba(37, 99, 235, 0.3);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            position: relative;
+        }
+
+        .mockup-annotation {
+            position: absolute;
+            background: #EF4444;
+            color: #fff;
+            padding: 6px 14px;
+            border-radius: 8px;
+            font-size: 0.75rem;
+            font-weight: 700;
+            box-shadow: 0 4px 12px rgba(239, 68, 68, 0.3);
+            animation: pop-in 0.6s ease backwards;
+        }
+
+        .mockup-annotation:nth-child(1) {
+            top: 15%;
+            left: 10%;
+            animation-delay: 1s;
+        }
+
+        .mockup-annotation:nth-child(2) {
+            bottom: 25%;
+            right: 15%;
+            background: var(--a-primary);
+            box-shadow: 0 4px 12px rgba(37, 99, 235, 0.3);
+            animation-delay: 1.5s;
+        }
+
+        .mockup-annotation:nth-child(3) {
+            top: 40%;
+            right: 5%;
+            background: #F59E0B;
+            box-shadow: 0 4px 12px rgba(245, 158, 11, 0.3);
+            animation-delay: 2s;
+        }
+
+        @keyframes pop-in {
+            from {
+                opacity: 0;
+                transform: scale(0.5);
+            }
+
+            to {
+                opacity: 1;
+                transform: scale(1);
+            }
+        }
+
+        .mockup-icon-center {
+            opacity: 0.3;
+        }
+
+        /* Floating elements */
+        .hero-float {
+            position: absolute;
+            border-radius: 16px;
+            background: var(--a-surface);
+            border: 1px solid var(--a-border);
+            padding: 14px 20px;
+            box-shadow: 0 8px 30px rgba(0, 0, 0, 0.08);
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            font-size: 0.85rem;
+            font-weight: 600;
+            animation: float-side 4s ease-in-out infinite;
+        }
+
+        .hero-float.top-right {
+            top: -20px;
+            right: -30px;
+            animation-delay: 0.5s;
+        }
+
+        .hero-float.bottom-left {
+            bottom: -20px;
+            left: -30px;
+            animation-delay: 1s;
+        }
+
+        @keyframes float-side {
+
+            0%,
+            100% {
+                transform: translateY(0) translateX(0);
+            }
+
+            50% {
+                transform: translateY(-8px) translateX(4px);
+            }
+        }
+
+        .float-icon {
+            width: 36px;
+            height: 36px;
+            border-radius: 10px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .float-icon.blue {
+            background: linear-gradient(135deg, rgba(37, 99, 235, 0.15), rgba(14, 165, 233, 0.15));
+            color: var(--a-primary);
+        }
+
+        .float-icon.green {
+            background: linear-gradient(135deg, rgba(16, 185, 129, 0.15), rgba(34, 197, 94, 0.15));
+            color: #10B981;
+        }
+
+        /* --- FEATURES SECTION --- */
+        .features {
+            background: var(--a-surface);
+        }
+
+        .section-label {
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+            font-size: 0.85rem;
+            font-weight: 700;
+            color: var(--a-primary);
+            text-transform: uppercase;
+            letter-spacing: 0.1em;
+            margin-bottom: 16px;
+        }
+
+        .section-title {
+            font-size: 2.5rem;
+            font-weight: 800;
+            line-height: 1.2;
+            margin-bottom: 16px;
+            letter-spacing: -0.02em;
+        }
+
+        .section-desc {
+            font-size: 1.1rem;
+            color: var(--a-text-secondary);
+            max-width: 600px;
+            margin: 0 auto 60px;
+        }
+
+        .features-grid {
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            gap: 32px;
+        }
+
+        .feature-card {
+            background: var(--a-bg);
+            border: 1px solid var(--a-border);
+            border-radius: 20px;
+            padding: 36px 28px;
+            transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+            position: relative;
+            overflow: hidden;
+        }
+
+        .feature-card::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            height: 4px;
+            background: linear-gradient(90deg, var(--a-primary), var(--a-accent));
+            opacity: 0;
+            transition: opacity 0.3s ease;
+        }
+
+        .feature-card:hover {
+            transform: translateY(-4px);
+            box-shadow: 0 12px 40px rgba(0, 0, 0, 0.06);
+            border-color: rgba(37, 99, 235, 0.2);
+        }
+
+        .feature-card:hover::before {
+            opacity: 1;
+        }
+
+        .feature-icon {
+            width: 56px;
+            height: 56px;
+            border-radius: 16px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            margin-bottom: 20px;
+            font-size: 1.5rem;
+        }
+
+        .feature-icon.blue {
+            background: linear-gradient(135deg, rgba(37, 99, 235, 0.12), rgba(14, 165, 233, 0.12));
+            color: var(--a-primary);
+        }
+
+        .feature-icon.purple {
+            background: linear-gradient(135deg, rgba(139, 92, 246, 0.12), rgba(168, 85, 247, 0.12));
+            color: #8B5CF6;
+        }
+
+        .feature-icon.green {
+            background: linear-gradient(135deg, rgba(16, 185, 129, 0.12), rgba(34, 197, 94, 0.12));
+            color: #10B981;
+        }
+
+        .feature-icon.orange {
+            background: linear-gradient(135deg, rgba(245, 158, 11, 0.12), rgba(251, 146, 60, 0.12));
+            color: #F59E0B;
+        }
+
+        .feature-icon.red {
+            background: linear-gradient(135deg, rgba(239, 68, 68, 0.12), rgba(248, 113, 113, 0.12));
+            color: #EF4444;
+        }
+
+        .feature-icon.cyan {
+            background: linear-gradient(135deg, rgba(6, 182, 212, 0.12), rgba(34, 211, 238, 0.12));
+            color: #06B6D4;
+        }
+
+        .feature-card h3 {
+            font-size: 1.2rem;
+            font-weight: 700;
+            margin-bottom: 10px;
+        }
+
+        .feature-card p {
+            font-size: 0.95rem;
+            color: var(--a-text-secondary);
+            line-height: 1.7;
+        }
+
+        /* --- HOW IT WORKS --- */
+        .how-it-works {
+            background: var(--a-bg);
+        }
+
+        .steps-grid {
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            gap: 40px;
+            position: relative;
+        }
+
+        .steps-grid::before {
+            content: '';
+            position: absolute;
+            top: 60px;
+            left: 20%;
+            right: 20%;
+            height: 2px;
+            background: linear-gradient(90deg, var(--a-primary), var(--a-accent));
+            opacity: 0.3;
+        }
+
+        .step-card {
+            text-align: center;
+            position: relative;
+        }
+
+        .step-number {
+            width: 64px;
+            height: 64px;
+            border-radius: 50%;
+            background: linear-gradient(135deg, var(--a-primary), var(--a-accent));
+            color: #fff;
+            font-size: 1.5rem;
+            font-weight: 800;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            margin: 0 auto 24px;
+            position: relative;
+            z-index: 1;
+            box-shadow: 0 8px 24px rgba(37, 99, 235, 0.25);
+        }
+
+        .step-card h3 {
+            font-size: 1.3rem;
+            font-weight: 700;
+            margin-bottom: 12px;
+        }
+
+        .step-card p {
+            font-size: 0.95rem;
+            color: var(--a-text-secondary);
+            max-width: 280px;
+            margin: 0 auto;
+        }
+
+        /* --- SPECS --- */
+        .specs {
+            background: linear-gradient(135deg, #0F172A, #1E293B);
+            color: #fff;
+        }
+
+        .specs .section-label {
+            color: var(--a-accent);
+        }
+
+        .specs .section-title {
+            color: #fff;
+        }
+
+        .specs .section-desc {
+            color: #94A3B8;
+        }
+
+        .specs-grid {
+            display: grid;
+            grid-template-columns: repeat(4, 1fr);
+            gap: 24px;
+        }
+
+        .spec-card {
+            background: rgba(255, 255, 255, 0.05);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            border-radius: 16px;
+            padding: 32px 24px;
+            text-align: center;
+            transition: all 0.3s ease;
+        }
+
+        .spec-card:hover {
+            background: rgba(255, 255, 255, 0.08);
+            transform: translateY(-4px);
+            border-color: rgba(37, 99, 235, 0.4);
+        }
+
+        .spec-value {
+            font-size: 2.5rem;
+            font-weight: 900;
+            background: linear-gradient(135deg, var(--a-primary-light), var(--a-accent));
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+            margin-bottom: 8px;
+        }
+
+        .spec-label {
+            font-size: 0.9rem;
+            color: #94A3B8;
+            font-weight: 500;
+        }
+
+        /* --- CTA SECTION --- */
+        .cta-section {
+            background: var(--a-bg);
+        }
+
+        .cta-box {
+            background: linear-gradient(135deg, var(--a-primary), var(--a-accent));
+            border-radius: 28px;
+            padding: 80px 60px;
+            text-align: center;
+            position: relative;
+            overflow: hidden;
+        }
+
+        .cta-box::before {
+            content: '';
+            position: absolute;
+            top: -50%;
+            left: -50%;
+            width: 200%;
+            height: 200%;
+            background: radial-gradient(circle at 30% 50%, rgba(255, 255, 255, 0.1) 0%, transparent 50%);
+        }
+
+        .cta-box h2 {
+            font-size: 2.5rem;
+            font-weight: 800;
+            color: #fff;
+            margin-bottom: 16px;
+            position: relative;
+        }
+
+        .cta-box p {
+            font-size: 1.15rem;
+            color: rgba(255, 255, 255, 0.85);
+            margin-bottom: 40px;
+            position: relative;
+        }
+
+        .cta-box .cta-btn {
+            background: #fff;
+            color: var(--a-primary);
+            box-shadow: 0 8px 30px rgba(0, 0, 0, 0.15);
+            position: relative;
+        }
+
+        .cta-box .cta-btn:hover {
+            background: #F8FAFC;
+        }
+
+        /* --- FOOTER --- */
+        .footer {
+            background: #0F172A;
+            color: #94A3B8;
+            padding: 40px 0;
+            text-align: center;
+            font-size: 0.9rem;
+        }
+
+        .footer-logo {
+            font-size: 1.3rem;
+            font-weight: 800;
+            color: #fff;
+            margin-bottom: 12px;
+        }
+
+        /* RESPONSIVE */
+        @media (max-width: 1024px) {
+            .hero .container {
+                grid-template-columns: 1fr;
+                text-align: center;
+            }
+
+            .hero p {
+                margin-left: auto;
+                margin-right: auto;
+            }
+
+            .hero-actions {
+                justify-content: center;
+            }
+
+            .hero-visual {
+                max-width: 600px;
+                margin: 0 auto;
+            }
+
+            .features-grid {
+                grid-template-columns: repeat(2, 1fr);
+            }
+
+            .specs-grid {
+                grid-template-columns: repeat(2, 1fr);
+            }
+        }
+
+        @media (max-width: 768px) {
+            .nav-links {
+                display: none;
+            }
+
+            .hero h1 {
+                font-size: 2.5rem;
+            }
+
+            .section-title {
+                font-size: 2rem;
+            }
+
+            .features-grid,
+            .steps-grid {
+                grid-template-columns: 1fr;
+            }
+
+            .steps-grid::before {
+                display: none;
+            }
+
+            .specs-grid {
+                grid-template-columns: 1fr 1fr;
+            }
+
+            .hero-float {
+                display: none;
+            }
+
+            .hero-actions {
+                flex-direction: column;
+            }
+
+            .cta-box {
+                padding: 50px 30px;
+            }
+
+            .cta-box h2 {
+                font-size: 1.8rem;
+            }
+        }
+    </style>
+</head>
+
+<body>
+
+    <!-- ===== NAVIGATION ===== -->
+    <nav class="nav" id="nav">
+        <div class="container">
+            <div class="nav-logo">
+                <svg viewBox="0 0 32 32" fill="none">
+                    <rect width="32" height="32" rx="8" fill="currentColor" />
+                    <path d="M8 12l4-4h8l4 4v12H8V12z" fill="#fff" opacity="0.9" />
+                    <circle cx="16" cy="18" r="4" fill="currentColor" />
+                    <circle cx="16" cy="18" r="2" fill="#fff" />
+                </svg>
+                MarkShot
+            </div>
+            <div class="nav-links">
+                <a href="#features">機能</a>
+                <a href="#how-it-works">使い方</a>
+                <a href="#specs">スペック</a>
+                <a href="#download" class="nav-cta">ダウンロード</a>
+            </div>
+        </div>
+    </nav>
+
+    <!-- ===== HERO ===== -->
+    <section class="hero">
+        <div class="container">
+            <div class="hero-content">
+                <div class="hero-badge">Windows 対応 デスクトップアプリ</div>
+                <h1>
+                    撮る、書く、保存する。<br />
+                    <span class="gradient-text">すべてを一瞬で。</span>
+                </h1>
+                <p>
+                    MarkShotは、スクリーンショットの撮影から注釈の追加、ローカル保存やGoogle Driveへのアップロードまで、すべてをワンアクションで完結するデスクトップキャプチャツールです。
+                </p>
+                <div class="hero-actions">
+                    <a href="#download" class="cta-btn">
+                        無料ダウンロード
+                        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                            stroke-width="2.5" style="margin-left:8px">
+                            <path d="M12 5v14M19 12l-7 7-7-7" />
+                        </svg>
+                    </a>
+                    <a href="#features" class="hero-secondary-btn">
+                        機能を見る
+                        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                            stroke-width="2">
+                            <path d="M5 12h14M12 5l7 7-7 7" />
+                        </svg>
+                    </a>
+                </div>
+            </div>
+
+            <div class="hero-visual">
+                <div class="hero-mockup">
+                    <div class="mockup-header">
+                        <div class="mockup-dot red"></div>
+                        <div class="mockup-dot yellow"></div>
+                        <div class="mockup-dot green"></div>
+                    </div>
+                    <div class="mockup-body">
+                        <div class="mockup-canvas">
+                            <svg class="mockup-icon-center" width="48" height="48" viewBox="0 0 24 24" fill="none"
+                                stroke="#2563EB" stroke-width="1.5">
+                                <rect x="3" y="3" width="18" height="18" rx="2" />
+                                <circle cx="8.5" cy="8.5" r="1.5" />
+                                <path d="M21 15l-5-5L5 21" />
+                            </svg>
+                            <div class="mockup-annotation">🖊 注釈A</div>
+                            <div class="mockup-annotation">📌 マーク</div>
+                            <div class="mockup-annotation">⚡ 矢印</div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="hero-float top-right">
+                    <div class="float-icon blue">
+                        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                            stroke-width="2">
+                            <path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4M17 8l-5-5-5 5M12 3v12" />
+                        </svg>
+                    </div>
+                    Drive同期完了
+                </div>
+
+                <div class="hero-float bottom-left">
+                    <div class="float-icon green">
+                        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                            stroke-width="2">
+                            <path d="M22 11.08V12a10 10 0 11-5.93-9.14" />
+                            <path d="M22 4L12 14.01l-3-3" />
+                        </svg>
+                    </div>
+                    保存完了 0.1s
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- ===== FEATURES ===== -->
+    <section class="features section" id="features">
+        <div class="container text-center">
+            <div class="section-label">Features</div>
+            <h2 class="section-title">あらゆるキャプチャを、ひとつのツールで。</h2>
+            <p class="section-desc">スクリーンショットからGIF録画まで。必要な機能がすべて揃っています。</p>
+
+            <div class="features-grid">
+                <div class="feature-card">
+                    <div class="feature-icon blue">
+                        <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                            stroke-width="2">
+                            <rect x="3" y="3" width="18" height="18" rx="2" />
+                            <path d="M9 3v18M3 9h18" />
+                        </svg>
+                    </div>
+                    <h3>範囲選択キャプチャ</h3>
+                    <p>Ctrl+Shift+Sで即起動。マウスで範囲を選択し、必要な領域だけを正確にキャプチャできます。</p>
+                </div>
+
+                <div class="feature-card">
+                    <div class="feature-icon purple">
+                        <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                            stroke-width="2">
+                            <path d="M12 20h9M16.5 3.5a2.12 2.12 0 013 3L7 19l-4 1 1-4L16.5 3.5z" />
+                        </svg>
+                    </div>
+                    <h3>リアルタイム注釈</h3>
+                    <p>矢印、テキスト、マーカーなどを直感的に追加。キャプチャ直後に即座に編集を開始できます。</p>
+                </div>
+
+                <div class="feature-card">
+                    <div class="feature-icon green">
+                        <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                            stroke-width="2">
+                            <path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4M7 10l5 5 5-5M12 15V3" />
+                        </svg>
+                    </div>
+                    <h3>ワンクリック保存</h3>
+                    <p>ローカルフォルダへの自動保存に対応。閉じると同時にバックグラウンドで保存されます。</p>
+                </div>
+
+                <div class="feature-card">
+                    <div class="feature-icon orange">
+                        <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                            stroke-width="2">
+                            <path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5" />
+                        </svg>
+                    </div>
+                    <h3>Google Drive連携</h3>
+                    <p>OAuth 2.0によるセキュアな認証でGoogle Driveに直接アップロード。共有リンクも自動生成されます。</p>
+                </div>
+
+                <div class="feature-card">
+                    <div class="feature-icon red">
+                        <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                            stroke-width="2">
+                            <circle cx="12" cy="12" r="10" />
+                            <path d="M12 6v6l4 2" />
+                        </svg>
+                    </div>
+                    <h3>GIF録画</h3>
+                    <p>選択した範囲のGIFアニメーションを録画。操作手順の共有やバグ報告に最適です。</p>
+                </div>
+
+                <div class="feature-card">
+                    <div class="feature-icon cyan">
+                        <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                            stroke-width="2">
+                            <rect x="2" y="3" width="20" height="14" rx="2" />
+                            <path d="M8 21h8M12 17v4" />
+                        </svg>
+                    </div>
+                    <h3>動画キャプチャ</h3>
+                    <p>画面全体をWebM形式で録画。高品質な動画をローカルに保存できます。</p>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- ===== HOW IT WORKS ===== -->
+    <section class="how-it-works section" id="how-it-works">
+        <div class="container text-center">
+            <div class="section-label">How it works</div>
+            <h2 class="section-title">3ステップで完了。</h2>
+            <p class="section-desc">複雑な設定は不要。インストールしたその瞬間からすぐに使えます。</p>
+
+            <div class="steps-grid">
+                <div class="step-card">
+                    <div class="step-number">1</div>
+                    <h3>ショートカットで起動</h3>
+                    <p>Ctrl+Shift+Sを押すだけで、瞬時にキャプチャモードが起動します。</p>
+                </div>
+                <div class="step-card">
+                    <div class="step-number">2</div>
+                    <h3>範囲を選択＆編集</h3>
+                    <p>ドラッグで範囲を指定し、そのまま注釈やマーカーを追加できます。</p>
+                </div>
+                <div class="step-card">
+                    <div class="step-number">3</div>
+                    <h3>保存＆共有</h3>
+                    <p>ウィンドウを閉じると自動保存。またはDriveにワンクリック共有。</p>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- ===== SPECS ===== -->
+    <section class="specs section" id="specs">
+        <div class="container text-center">
+            <div class="section-label">Technical Specs</div>
+            <h2 class="section-title">パフォーマンスに妥協なし。</h2>
+            <p class="section-desc">Electronベースの高速アーキテクチャ。セキュリティを標準装備。</p>
+
+            <div class="specs-grid">
+                <div class="spec-card">
+                    <div class="spec-value">&lt;0.1s</div>
+                    <div class="spec-label">ウィンドウ非表示速度</div>
+                </div>
+                <div class="spec-card">
+                    <div class="spec-value">非同期</div>
+                    <div class="spec-label">バックグラウンド保存</div>
+                </div>
+                <div class="spec-card">
+                    <div class="spec-value">CSP</div>
+                    <div class="spec-label">セキュリティポリシー適用</div>
+                </div>
+                <div class="spec-card">
+                    <div class="spec-value">OAuth</div>
+                    <div class="spec-label">Google Drive 認証方式</div>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- ===== CTA ===== -->
+    <section class="cta-section section" id="download">
+        <div class="container">
+            <div class="cta-box">
+                <h2>MarkShotを始めよう。</h2>
+                <p>無料でダウンロードして、瞬時のキャプチャ体験を。</p>
+                <a href="#" class="cta-btn">
+                    Windows版をダウンロード
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"
+                        style="margin-left:8px">
+                        <path d="M12 5v14M19 12l-7 7-7-7" />
+                    </svg>
+                </a>
+            </div>
+        </div>
+    </section>
+
+    <!-- ===== FOOTER ===== -->
+    <footer class="footer">
+        <div class="container">
+            <div class="footer-logo">MarkShot</div>
+            <p>&copy; 2026 MarkShot. All rights reserved.</p>
+        </div>
+    </footer>
+
+    <script>
+        // Scroll effect for nav
+        const nav = document.getElementById('nav');
+        window.addEventListener('scroll', () => {
+            nav.classList.toggle('scrolled', window.scrollY > 20);
+        });
+    </script>
+
+</body>
+
+</html>
