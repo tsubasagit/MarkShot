@@ -7,6 +7,35 @@
     <meta name="description"
         content="MarkShot - スクリーンショット、注釈、GIF録画、Google Drive連携。撮って、書いて、共有する。すべてをワンストップで。" />
     <title>MarkShot - 撮って、書いて、共有する。</title>
+
+    <!-- Open Graph -->
+    <meta property="og:title" content="MarkShot - 撮って、書いて、共有する。" />
+    <meta property="og:description" content="スクリーンショット、注釈、GIF録画、Google Drive連携。Windows向け無料ツール。" />
+    <meta property="og:image" content="https://tsubasagit.github.io/MarkShot/img/markshot1.png" />
+    <meta property="og:url" content="https://tsubasagit.github.io/MarkShot/" />
+    <meta property="og:type" content="website" />
+    <meta property="og:locale" content="ja_JP" />
+
+    <!-- Twitter Card -->
+    <meta name="twitter:card" content="summary_large_image" />
+    <meta name="twitter:title" content="MarkShot - 撮って、書いて、共有する。" />
+    <meta name="twitter:description" content="スクリーンショット、注釈、GIF録画、Google Drive連携。Windows向け無料ツール。" />
+    <meta name="twitter:image" content="https://tsubasagit.github.io/MarkShot/img/markshot1.png" />
+
+    <!-- SEO -->
+    <meta name="keywords" content="スクリーンショット,screenshot,annotation,注釈,GIF録画,Windows,MarkShot,screen capture" />
+    <link rel="canonical" href="https://tsubasagit.github.io/MarkShot/" />
+    <link rel="icon" type="image/png" href="./img/logo3.png" />
+
+    <!-- Google Analytics 4 -->
+    <script async src="https://www.googletagmanager.com/gtag/js?id=G-TZ4E0P8930"></script>
+    <script>
+        window.dataLayer = window.dataLayer || [];
+        function gtag(){dataLayer.push(arguments);}
+        gtag('js', new Date());
+        gtag('config', 'G-TZ4E0P8930');
+    </script>
+
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link
@@ -702,7 +731,7 @@
                 MarkShotがすべてをワンストップで実現します。
             </p>
             <div class="hero-actions">
-                <a href="https://github.com/tsubasagit/MarkShot/releases" class="btn-primary">
+                <a href="https://github.com/tsubasagit/MarkShot/releases/latest/download/MarkShot-Setup-1.1.0.exe" class="btn-primary" onclick="gtag('event','download_click',{event_category:'download',event_label:this.closest('section').className})">
                     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"
                         stroke-linejoin="round">
                         <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
@@ -927,7 +956,7 @@
         <div class="container">
             <h2>今すぐ<span class="accent">MarkShot</span>を始めよう</h2>
             <p>インストールして、すぐに使い始められます。</p>
-            <a href="https://github.com/tsubasagit/MarkShot/releases" class="btn-primary">
+            <a href="https://github.com/tsubasagit/MarkShot/releases/latest/download/MarkShot-Setup-1.1.0.exe" class="btn-primary" onclick="gtag('event','download_click',{event_category:'download',event_label:this.closest('section').className})">
                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"
                     stroke-linejoin="round" width="20" height="20">
                     <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
@@ -952,7 +981,7 @@
                 <a href="https://github.com/tsubasagit/MarkShot/releases">Releases</a>
                 <a href="https://github.com/tsubasagit/MarkShot/issues">Issues</a>
             </div>
-            <p>&copy; 2025 MarkShot. All rights reserved.</p>
+            <p>&copy; 2026 MarkShot. All rights reserved.</p>
         </div>
     </footer>
 
