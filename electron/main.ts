@@ -16,8 +16,19 @@ import fs from 'fs'
 import { loadSettings, saveSettings } from './settings'
 import { uploadToGoogleDrive, startOAuthFlow, logoutGoogle, isGoogleConnected } from './google-drive'
 
+process.on('uncaughtException', (err) => {
+  console.error('[FATAL] uncaughtException:', err)
+})
+process.on('unhandledRejection', (reason) => {
+  console.error('[FATAL] unhandledRejection:', reason)
+})
+process.on('exit', (code) => {
+  console.error('[PROCESS] exit with code:', code)
+})
+
 let mainWindow: BrowserWindow | null = null
 let overlayWindows: BrowserWindow[] = []
+let overlayPool: Map<number, BrowserWindow> = new Map() // Reusable overlay windows by displayId
 let recordingOverlayWindow: BrowserWindow | null = null
 let recordingControlWindow: BrowserWindow | null = null
 let tray: Tray | null = null
@@ -61,7 +72,15 @@ function createMainWindow() {
       preload: PRELOAD,
       contextIsolation: true,
       nodeIntegration: false,
+      backgroundThrottling: false,
     },
+  })
+
+  mainWindow.webContents.on('render-process-gone', (_e, details) => {
+    console.error('[MAIN WINDOW] render-process-gone:', details)
+  })
+  mainWindow.webContents.on('crashed' as any, () => {
+    console.error('[MAIN WINDOW] renderer crashed')
   })
 
   Menu.setApplicationMenu(null)
@@ -76,7 +95,13 @@ function createMainWindow() {
               ? sources.find((s) => s.display_id === String(activeDisplay!.id)) || sources[0]
               : sources[0]
             callback({ video: target })
+          } else {
+            callback({})
           }
+        })
+        .catch((err) => {
+          console.error('setDisplayMediaRequestHandler error:', err)
+          callback({})
         })
     }
   )
@@ -88,18 +113,20 @@ function createMainWindow() {
   }
 
   mainWindow.on('close', (e) => {
-    if (mainWindow && !mainWindow.isDestroyed() && mainWindow.isVisible()) {
+    if (mainWindow && !mainWindow.isDestroyed()) {
       e.preventDefault()
-      mainWindow.hide()
-      mainWindow.webContents.send('auto-save-request')
-      if (!firstMinimizeNotified && tray) {
-        tray.displayBalloon({
-          title: 'MarkShot',
-          content: 'トレイに常駐しています。ダブルクリックでキャプチャ、右クリックでメニュー。',
-          iconType: 'info',
-        })
-        firstMinimizeNotified = true
+      if (mainWindow.isVisible()) {
+        mainWindow.webContents.send('auto-save-request')
+        if (!firstMinimizeNotified && tray) {
+          tray.displayBalloon({
+            title: 'MarkShot',
+            content: 'トレイに常駐しています。ダブルクリックでキャプチャ、右クリックでメニュー。',
+            iconType: 'info',
+          })
+          firstMinimizeNotified = true
+        }
       }
+      mainWindow.hide()
     }
   })
 
@@ -118,7 +145,7 @@ function createMainWindow() {
 function closeAllOverlays() {
   overlayWindows.forEach(win => {
     if (win && !win.isDestroyed()) {
-      win.close()
+      win.hide()
     }
   })
   overlayWindows = []
@@ -126,7 +153,32 @@ function closeAllOverlays() {
   overlayReadyWaitingCount = 0
 }
 
-function createOverlayWindow(display: Electron.Display, mode: 'screenshot' | 'gif' = 'screenshot') {
+function getOrCreateOverlayWindow(display: Electron.Display, mode: 'screenshot' | 'gif' = 'screenshot'): BrowserWindow {
+  const poolKey = display.id
+  const existing = overlayPool.get(poolKey)
+
+  if (existing && !existing.isDestroyed()) {
+    if (mode === 'gif') {
+      // GIF mode: destroy pooled window and create fresh to avoid GPU crash
+      console.log('[getOrCreateOverlay] GIF mode: destroying pooled window for display', display.id)
+      overlayPool.delete(poolKey)
+      existing.destroy()
+    } else {
+      // Screenshot mode: reuse pooled window
+      const hash = `#/capture?displayId=${display.id}`
+      const url = process.env.VITE_DEV_SERVER_URL
+        ? `${process.env.VITE_DEV_SERVER_URL}${hash}`
+        : `file://${path.join(DIST, 'index.html')}${hash}`
+
+      existing.hide()
+      ;(existing as any).isReadyToReceive = false
+      existing.loadURL(url)
+      overlayWindows.push(existing)
+      return existing
+    }
+  }
+
+  // Create new window
   const { x, y, width, height } = display.bounds
 
   const win = new BrowserWindow({
@@ -160,9 +212,12 @@ function createOverlayWindow(display: Electron.Display, mode: 'screenshot' | 'gi
 
   win.on('closed', () => {
     overlayWindows = overlayWindows.filter(w => w !== win)
+    overlayPool.delete(poolKey)
   })
 
+  overlayPool.set(poolKey, win)
   overlayWindows.push(win)
+  return win
 }
 
 function createTray() {
@@ -202,25 +257,39 @@ function createTray() {
 }
 
 async function startCapture(mode: 'screenshot' | 'gif' = 'screenshot') {
+  console.log('[startCapture] mode:', mode)
   try {
+    console.log('[startCapture] step 1: closeAllOverlays')
     closeAllOverlays()
 
+    console.log('[startCapture] step 2: getAllDisplays')
     const allDisplays = screen.getAllDisplays()
     overlayReadyWaitingCount = allDisplays.length
+    console.log('[startCapture] displays:', allDisplays.length)
 
+    console.log('[startCapture] step 3: creating overlay windows')
     for (const display of allDisplays) {
-      createOverlayWindow(display, mode)
+      console.log('[startCapture] creating overlay for display', display.id, 'pool has:', overlayPool.has(display.id))
+      getOrCreateOverlayWindow(display, mode)
     }
+    console.log('[startCapture] step 3 done')
 
     if (mainWindow && !mainWindow.isDestroyed() && mainWindow.isVisible()) {
+      console.log('[startCapture] step 4: hiding mainWindow')
       mainWindow.hide()
       await new Promise((r) => setTimeout(r, 80))
     }
 
+    // Use actual max display resolution instead of fixed 4000x4000
+    const maxWidth = Math.max(...allDisplays.map(d => d.size.width * d.scaleFactor))
+    const maxHeight = Math.max(...allDisplays.map(d => d.size.height * d.scaleFactor))
+    console.log('[startCapture] step 5: desktopCapturer.getSources, size:', maxWidth, 'x', maxHeight)
+
     const sources = await desktopCapturer.getSources({
       types: ['screen'],
-      thumbnailSize: { width: 4000, height: 4000 }
+      thumbnailSize: { width: maxWidth, height: maxHeight }
     })
+    console.log('[startCapture] step 5 done, sources:', sources.length)
 
     allDisplays.forEach(display => {
       const source = sources.find(s => s.display_id === String(display.id)) || sources[0]
@@ -236,6 +305,7 @@ async function startCapture(mode: 'screenshot' | 'gif' = 'screenshot') {
         win.show()
       }
     })
+    console.log('[startCapture] done')
 
   } catch (err) {
     console.error('Failed to capture screen:', err)
@@ -303,28 +373,35 @@ ipcMain.on('capture:cancel', () => {
 // ---- IPC: GIF Capture (region selection) ----
 
 ipcMain.on('capture:start-gif', () => {
+  console.log('[IPC] capture:start-gif received')
   startCapture('gif')
 })
 
 ipcMain.on(
   'capture:gif-region-selected',
   (event, region: { x: number; y: number; w: number; h: number; scaleFactor: number }) => {
+    console.log('[IPC] capture:gif-region-selected, region:', region)
     const win = BrowserWindow.fromWebContents(event.sender)
-    const displayId = (win as any).displayId
-    activeDisplay = screen.getAllDisplays().find(d => d.id === displayId) || screen.getPrimaryDisplay()
+    const displayId = win ? (win as any).displayId : undefined
+    activeDisplay = displayId
+      ? screen.getAllDisplays().find(d => d.id === displayId) || screen.getPrimaryDisplay()
+      : screen.getPrimaryDisplay()
 
     closeAllOverlays()
 
     if (!mainWindow || mainWindow.isDestroyed()) {
+      console.log('[GIF] mainWindow destroyed, recreating...')
       createMainWindow()
     }
 
+    console.log('[GIF] showing mainWindow, isDestroyed:', mainWindow?.isDestroyed())
     mainWindow!.setSize(1100, 750)
     mainWindow!.center()
     mainWindow!.show()
     mainWindow!.focus()
 
     const sendRegion = () => {
+      console.log('[GIF] sending gif:start-with-region to renderer')
       if (mainWindow && !mainWindow.isDestroyed()) {
         mainWindow.webContents.send('gif:start-with-region', region)
       }
@@ -580,6 +657,19 @@ const gotTheLock = app.requestSingleInstanceLock()
 if (!gotTheLock) {
   app.quit()
 } else {
+  app.on('window-all-closed', (e: Event) => {
+    // Prevent app from quitting when all windows are hidden (e.g. during GIF capture)
+    e.preventDefault()
+  })
+
+  app.on('child-process-gone', (_event, details) => {
+    console.error('[APP] child-process-gone:', details)
+  })
+
+  app.on('render-process-gone' as any, (_event: any, _wc: any, details: any) => {
+    console.error('[APP] render-process-gone:', details)
+  })
+
   app.on('second-instance', () => {
     if (mainWindow && !mainWindow.isDestroyed()) {
       mainWindow.show()
@@ -588,12 +678,13 @@ if (!gotTheLock) {
   })
 
   app.whenReady().then(() => {
-    createMainWindow()
     createTray()
     globalShortcut.register('Ctrl+Shift+S', () => {
       startCapture()
     })
     startCapture()
+    // Defer main window creation — not needed until capture completes
+    createMainWindow()
   })
 
   app.on('will-quit', () => {

@@ -22,6 +22,7 @@ const RegionSelector: React.FC<RegionSelectorProps> = ({ mode = 'screenshot' }) 
   const [isDragging, setIsDragging] = useState(false)
   const [region, setRegion] = useState<Region | null>(null)
   const [startPos, setStartPos] = useState({ x: 0, y: 0 })
+  const [mousePos, setMousePos] = useState<{ x: number; y: number } | null>(null)
 
   useEffect(() => {
     // Register the screenshot data listener FIRST
@@ -103,7 +104,42 @@ const RegionSelector: React.FC<RegionSelectorProps> = ({ mode = 'screenshot' }) 
         ctx.fillText(label, labelX + 6, labelY + 16)
       }
     }
-  }, [screenshotImage, region, displayInfo])
+
+    // Draw custom crosshair cursor
+    if (mousePos) {
+      const { x: mx, y: my } = mousePos
+      const armLen = 20
+      const gap = 6
+      const lineW = 2
+
+      // Outer stroke (dark) for contrast
+      ctx.strokeStyle = 'rgba(0, 0, 0, 0.7)'
+      ctx.lineWidth = lineW + 2
+      ctx.setLineDash([])
+      ctx.beginPath()
+      ctx.moveTo(mx - armLen, my); ctx.lineTo(mx - gap, my)
+      ctx.moveTo(mx + gap, my); ctx.lineTo(mx + armLen, my)
+      ctx.moveTo(mx, my - armLen); ctx.lineTo(mx, my - gap)
+      ctx.moveTo(mx, my + gap); ctx.lineTo(mx, my + armLen)
+      ctx.stroke()
+
+      // Inner stroke (bright cyan)
+      ctx.strokeStyle = '#00FFFF'
+      ctx.lineWidth = lineW
+      ctx.beginPath()
+      ctx.moveTo(mx - armLen, my); ctx.lineTo(mx - gap, my)
+      ctx.moveTo(mx + gap, my); ctx.lineTo(mx + armLen, my)
+      ctx.moveTo(mx, my - armLen); ctx.lineTo(mx, my - gap)
+      ctx.moveTo(mx, my + gap); ctx.lineTo(mx, my + armLen)
+      ctx.stroke()
+
+      // Center dot
+      ctx.fillStyle = '#00FFFF'
+      ctx.beginPath()
+      ctx.arc(mx, my, 2, 0, Math.PI * 2)
+      ctx.fill()
+    }
+  }, [screenshotImage, region, displayInfo, mousePos])
 
   useEffect(() => {
     draw()
@@ -130,6 +166,7 @@ const RegionSelector: React.FC<RegionSelectorProps> = ({ mode = 'screenshot' }) 
   }
 
   const handleMouseMove = (e: React.MouseEvent) => {
+    setMousePos({ x: e.clientX, y: e.clientY })
     if (!isDragging) return
     setRegion({
       startX: startPos.x,
@@ -202,7 +239,7 @@ const RegionSelector: React.FC<RegionSelectorProps> = ({ mode = 'screenshot' }) 
           left: 0,
           width: '100vw',
           height: '100vh',
-          cursor: 'crosshair',
+          cursor: 'none',
           zIndex: 9999,
         }}
         onMouseDown={handleMouseDown}

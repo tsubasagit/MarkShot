@@ -99,6 +99,8 @@ const AnnotationEditor: React.FC<AnnotationEditorProps> = ({
 
   // Export stage as data URL
   const exportImage = useCallback((): string | null => {
+    if (gifPreviewUrl) return gifPreviewUrl
+
     const stage = stageRef.current
     if (!stage || !image) return null
 
@@ -108,7 +110,7 @@ const AnnotationEditor: React.FC<AnnotationEditorProps> = ({
       pixelRatio: Math.max(scaleX, scaleY) / stageScale,
       mimeType: 'image/png',
     })
-  }, [image, stageSize, stageScale])
+  }, [image, stageSize, stageScale, gifPreviewUrl])
 
   // Load captured image
   useEffect(() => {
@@ -228,21 +230,29 @@ const AnnotationEditor: React.FC<AnnotationEditorProps> = ({
 
   // GIF recording — start region selection via overlay
   const handleRecordGif = async () => {
-    if (image) {
-      const dataUrl = exportImage()
-      if (dataUrl) await window.electronAPI?.autoSave(dataUrl)
-    }
+    console.log('[handleRecordGif] called')
+    try {
+      if (image) {
+        const dataUrl = exportImage()
+        if (dataUrl) await window.electronAPI?.autoSave(dataUrl)
+      }
 
-    setGifPreviewUrl(null)
-    window.electronAPI?.startGifCapture()
+      setGifPreviewUrl(null)
+      console.log('[handleRecordGif] calling startGifCapture')
+      window.electronAPI?.startGifCapture()
+    } catch (err) {
+      console.error('[handleRecordGif] error:', err)
+    }
   }
 
   // Start recording with selected region
   const startGifWithRegion = useCallback(async (region: { x: number; y: number; w: number; h: number; scaleFactor: number }) => {
+    console.log('[startGifWithRegion] called, region:', region)
     setGifPreparing(true)
     showStatus('GIF録画を準備中...')
 
     try {
+      console.log('[startGifWithRegion] calling getDisplayMedia...')
       const stream = await navigator.mediaDevices.getDisplayMedia({
         video: {
           cursor: 'never',
@@ -298,50 +308,46 @@ const AnnotationEditor: React.FC<AnnotationEditorProps> = ({
       const frameDelay = 1000 / FPS
       let frameCount = 0
       let globalPalette: number[][] | null = null
-      let lastFrameTime = 0
-      let animationFrameId: number | null = null
-
-      const captureFrame = (time: number) => {
-        if (stopped) return
-
-        if (time - lastFrameTime >= frameDelay) {
-          lastFrameTime = time
-
-          if (frameCount >= MAX_SECONDS * FPS) {
-            stopGif()
-            return
-          }
-
-          // Draw full screen to full canvas
-          fullCtx.drawImage(video, 0, 0, srcW, srcH)
-          // Crop selected region to output canvas
-          ctx.drawImage(
-            fullCanvas,
-            region.x, region.y, region.w, region.h,
-            0, 0, w, h
-          )
-          const imageData = ctx.getImageData(0, 0, w, h)
-
-          if (!globalPalette) {
-            // First frame: build global palette
-            globalPalette = quantize(imageData.data as unknown as Uint8ClampedArray, 256)
-          }
-          const index = applyPalette(imageData.data as unknown as Uint8ClampedArray, globalPalette)
-          gif.writeFrame(index, w, h, { palette: globalPalette, delay: frameDelay })
-          frameCount++
-          setGifFrameCount(frameCount)
-        }
-
-        animationFrameId = requestAnimationFrame(captureFrame)
-      }
-
-      animationFrameId = requestAnimationFrame(captureFrame)
+      let captureIntervalId: number | null = null
 
       let stopped = false
+
+      const captureFrame = () => {
+        if (stopped) return
+
+        if (frameCount >= MAX_SECONDS * FPS) {
+          stopGif()
+          return
+        }
+
+        // Draw full screen to full canvas
+        fullCtx.drawImage(video, 0, 0, srcW, srcH)
+        // Crop selected region to output canvas
+        ctx.drawImage(
+          fullCanvas,
+          region.x, region.y, region.w, region.h,
+          0, 0, w, h
+        )
+        const imageData = ctx.getImageData(0, 0, w, h)
+
+        if (!globalPalette) {
+          // First frame: build global palette
+          globalPalette = quantize(imageData.data as unknown as Uint8ClampedArray, 256)
+        }
+        const index = applyPalette(imageData.data as unknown as Uint8ClampedArray, globalPalette)
+        gif.writeFrame(index, w, h, { palette: globalPalette, delay: frameDelay })
+        frameCount++
+        setGifFrameCount(frameCount)
+      }
+
+      // Use setInterval instead of requestAnimationFrame
+      // so frames are captured even when the window is hidden
+      captureIntervalId = window.setInterval(captureFrame, frameDelay)
+
       const stopGif = async () => {
         if (stopped) return
         stopped = true
-        if (animationFrameId !== null) cancelAnimationFrame(animationFrameId)
+        if (captureIntervalId !== null) clearInterval(captureIntervalId)
         cleanupStopListener?.()
 
         if (gifTimerRef.current) {
@@ -373,27 +379,31 @@ const AnnotationEditor: React.FC<AnnotationEditorProps> = ({
             r.readAsDataURL(gifBlob)
           })
 
-          const result = await window.electronAPI.saveGif(bytes)
+          setGifPreviewUrl(gifDataUrl)
           setGifEncoding(false)
 
-          setGifPreviewUrl(gifDataUrl)
+          // 1. Save locally
+          const result = await window.electronAPI.saveGif(bytes)
+          if (!result) {
+            showStatus('GIF save failed locally', true)
+          } else {
+            showStatus(`GIF saved: ${result}`)
+          }
 
+          // 2. Upload to Drive (optional)
           try {
             const connected = await window.electronAPI.googleStatus()
-            if (connected) {
+            if (connected && result) {
               const driveResult = await window.electronAPI.uploadToGoogleDrive(gifDataUrl)
               if (driveResult?.fileUrl) {
                 const { copyTextToClipboard } = await import('../utils/clipboard')
                 copyTextToClipboard(driveResult.fileUrl)
                 showStatus(`GIF saved & uploaded — URL copied`)
-              } else {
-                showStatus(`GIF saved: ${result}`)
               }
-            } else {
-              showStatus(`GIF saved: ${result}`)
             }
-          } catch {
-            showStatus(`GIF saved: ${result}`)
+          } catch (e) {
+            console.error('Drive upload failed', e)
+            // Keep the previous "GIF saved: ..." status visible if upload fails silently
           }
         } catch (err: any) {
           setGifEncoding(false)
@@ -1136,7 +1146,7 @@ const AnnotationEditor: React.FC<AnnotationEditorProps> = ({
       <div
         style={{
           padding: '8px 12px',
-          display: 'flex',
+          display: gifCountdown !== null ? 'none' : 'flex',
           gap: 10,
           alignItems: 'flex-start',
           width: '100%',
@@ -1246,7 +1256,7 @@ const AnnotationEditor: React.FC<AnnotationEditorProps> = ({
       <div
         style={{
           flex: 1,
-          display: 'flex',
+          display: gifCountdown !== null ? 'none' : 'flex',
           alignItems: 'center',
           justifyContent: 'center',
           overflow: 'auto',
@@ -1353,7 +1363,7 @@ const AnnotationEditor: React.FC<AnnotationEditorProps> = ({
       </div>
 
       {/* Bottom panel */}
-      <div style={{ padding: '8px 0' }}>
+      <div style={{ padding: '8px 0', display: gifCountdown !== null ? 'none' : 'block' }}>
         <SharePanel onExportImage={exportImage} />
       </div>
 
