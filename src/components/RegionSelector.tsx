@@ -225,6 +225,7 @@ const RegionSelector: React.FC<RegionSelectorProps> = ({ mode = 'screenshot' }) 
       )
 
       const croppedDataUrl = cropCanvas.toDataURL('image/png')
+      window.electronAPI?.copyImage(croppedDataUrl)
       window.electronAPI?.sendRegionSelected(croppedDataUrl)
     }
   }

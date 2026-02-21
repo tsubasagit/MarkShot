@@ -54,6 +54,7 @@ const AnnotationEditor: React.FC<AnnotationEditorProps> = ({
   const [strokeWidth, setStrokeWidth] = useState(3)
   const [fontSize, setFontSize] = useState(24)
   const [badgeKind, setBadgeKind] = useState<BadgeKind>('OK')
+  const [mosaicSize, setMosaicSize] = useState(10)
 
   const [isDrawing, setIsDrawing] = useState(false)
   const [currentPenPoints, setCurrentPenPoints] = useState<number[]>([])
@@ -128,6 +129,7 @@ const AnnotationEditor: React.FC<AnnotationEditorProps> = ({
       // Reset zoom/pan when new image loads
       setStageScale(1)
       setStagePos({ x: 0, y: 0 })
+      showStatus('クリップボードにコピー済み')
     }
     img.src = imageDataUrl
   }, [imageDataUrl])
@@ -650,7 +652,7 @@ const AnnotationEditor: React.FC<AnnotationEditorProps> = ({
             y: Math.min(drawStart.y, pos.y),
             width: Math.abs(mw),
             height: Math.abs(mh),
-            pixelSize: 10,
+            pixelSize: mosaicSize,
           })
         }
         break
@@ -771,29 +773,46 @@ const AnnotationEditor: React.FC<AnnotationEditorProps> = ({
     })
   }
 
-  // Mosaic rendering using Konva.Image with canvas (A3: much faster than individual Rects)
+  // Mosaic rendering using real pixelation of source image
   const MosaicImage: React.FC<{ ann: Annotation & { type: 'mosaic' } }> = React.memo(({ ann }) => {
     const [mosaicImage, setMosaicImage] = useState<HTMLCanvasElement | null>(null)
 
     useEffect(() => {
+      if (!image) return
+
+      const w = Math.round(ann.width)
+      const h = Math.round(ann.height)
+      const ps = ann.pixelSize
+
+      // Calculate source region in original image coordinates
+      const scaleX = image.width / stageSize.width
+      const scaleY = image.height / stageSize.height
+      const srcX = Math.round(ann.x * scaleX)
+      const srcY = Math.round(ann.y * scaleY)
+      const srcW = Math.round(w * scaleX)
+      const srcH = Math.round(h * scaleY)
+
+      // Step 1: Downscale — draw source region into a tiny canvas
+      const smallW = Math.max(1, Math.ceil(w / ps))
+      const smallH = Math.max(1, Math.ceil(h / ps))
+      const smallCanvas = document.createElement('canvas')
+      smallCanvas.width = smallW
+      smallCanvas.height = smallH
+      const smallCtx = smallCanvas.getContext('2d')
+      if (!smallCtx) return
+      smallCtx.drawImage(image, srcX, srcY, srcW, srcH, 0, 0, smallW, smallH)
+
+      // Step 2: Upscale with nearest-neighbor (no smoothing) for pixelated look
       const canvas = document.createElement('canvas')
-      canvas.width = Math.round(ann.width)
-      canvas.height = Math.round(ann.height)
+      canvas.width = w
+      canvas.height = h
       const ctx = canvas.getContext('2d')
       if (!ctx) return
+      ctx.imageSmoothingEnabled = false
+      ctx.drawImage(smallCanvas, 0, 0, w, h)
 
-      const ps = ann.pixelSize
-      for (let y = 0; y < ann.height; y += ps) {
-        for (let x = 0; x < ann.width; x += ps) {
-          ctx.fillStyle =
-            (Math.floor(x / ps) + Math.floor(y / ps)) % 2 === 0
-              ? '#6c7086'
-              : '#45475a'
-          ctx.fillRect(x, y, Math.min(ps, ann.width - x), Math.min(ps, ann.height - y))
-        }
-      }
       setMosaicImage(canvas)
-    }, [ann.width, ann.height, ann.pixelSize])
+    }, [ann.width, ann.height, ann.pixelSize, ann.x, ann.y, image, stageSize])
 
     if (!mosaicImage) return null
 
@@ -1249,6 +1268,8 @@ const AnnotationEditor: React.FC<AnnotationEditorProps> = ({
           badgeKind={badgeKind}
           onBadgeKindChange={setBadgeKind}
           stepCounter={stepCounter}
+          mosaicSize={mosaicSize}
+          onMosaicSizeChange={setMosaicSize}
         />
       </div>
 

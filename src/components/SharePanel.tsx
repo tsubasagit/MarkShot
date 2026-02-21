@@ -73,11 +73,21 @@ const SharePanel: React.FC<SharePanelProps> = ({ onExportImage }) => {
     }
   }
 
-  const handleCopyImage = () => {
+  const handleCopyImage = async () => {
     const dataUrl = onExportImage()
     if (!dataUrl) return
     copyImageToClipboard(dataUrl)
-    showStatus('クリップボードにコピーしました')
+    try {
+      const savedPath = await window.electronAPI?.autoSave(dataUrl)
+      if (savedPath) {
+        const fileName = savedPath.split(/[\\/]/).pop() || savedPath
+        showStatus(`コピー＆保存完了: ${fileName}`)
+      } else {
+        showStatus('クリップボードにコピーしました')
+      }
+    } catch {
+      showStatus('クリップボードにコピーしました（保存失敗）')
+    }
   }
 
   return (
@@ -87,13 +97,13 @@ const SharePanel: React.FC<SharePanelProps> = ({ onExportImage }) => {
           className="share-btn"
           style={{ background: '#2a2a4a', color: '#b0b0d0' }}
           onClick={handleCopyImage}
-          title="画像をクリップボードにコピー"
+          title="コピー＆ローカル保存"
         >
           <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
             <rect x="9" y="9" width="13" height="13" rx="2" ry="2"/>
             <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/>
           </svg>
-          Copy
+          Copy &amp; Save
         </button>
 
         <button

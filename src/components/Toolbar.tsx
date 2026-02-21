@@ -17,6 +17,8 @@ interface ToolbarProps {
   badgeKind: BadgeKind
   onBadgeKindChange: (kind: BadgeKind) => void
   stepCounter: number
+  mosaicSize: number
+  onMosaicSizeChange: (size: number) => void
 }
 
 const ToolIcon: React.FC<{ type: ToolType; stepCounter?: number }> = ({ type, stepCounter }) => {
@@ -88,6 +90,8 @@ const Toolbar: React.FC<ToolbarProps> = ({
   badgeKind,
   onBadgeKindChange,
   stepCounter,
+  mosaicSize,
+  onMosaicSizeChange,
 }) => {
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 6, alignItems: 'center' }}>
@@ -143,7 +147,8 @@ const Toolbar: React.FC<ToolbarProps> = ({
         {activeTool !== 'text' &&
           activeTool !== 'select' &&
           activeTool !== 'step' &&
-          activeTool !== 'badge' && (
+          activeTool !== 'badge' &&
+          activeTool !== 'mosaic' && (
             <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
               <span style={{ color: '#6c7086', fontSize: 10, whiteSpace: 'nowrap' }}>太さ</span>
               <input
@@ -157,6 +162,22 @@ const Toolbar: React.FC<ToolbarProps> = ({
               <span style={{ color: '#6c7086', fontSize: 10, width: 18, textAlign: 'center', fontFamily: 'monospace' }}>{strokeWidth}</span>
             </div>
           )}
+
+        {/* Mosaic block size */}
+        {activeTool === 'mosaic' && (
+          <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+            <span style={{ color: '#6c7086', fontSize: 10, whiteSpace: 'nowrap' }}>ブロック</span>
+            <input
+              type="range"
+              className="ms-slider"
+              min={4}
+              max={30}
+              value={mosaicSize}
+              onChange={(e) => onMosaicSizeChange(Number(e.target.value))}
+            />
+            <span style={{ color: '#6c7086', fontSize: 10, width: 18, textAlign: 'center', fontFamily: 'monospace' }}>{mosaicSize}</span>
+          </div>
+        )}
 
         {/* Font size (for text) */}
         {activeTool === 'text' && (
