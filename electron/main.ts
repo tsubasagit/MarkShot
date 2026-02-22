@@ -171,6 +171,10 @@ function getOrCreateOverlayWindow(display: Electron.Display, mode: 'screenshot' 
         : `file://${path.join(DIST, 'index.html')}${hash}`
 
       existing.hide()
+      // Re-apply correct bounds in case display config changed
+      const { x, y } = display.bounds
+      const { width, height } = display.size
+      existing.setBounds({ x, y, width, height })
       ;(existing as any).isReadyToReceive = false
       existing.loadURL(url)
       overlayWindows.push(existing)
@@ -179,7 +183,9 @@ function getOrCreateOverlayWindow(display: Electron.Display, mode: 'screenshot' 
   }
 
   // Create new window
-  const { x, y, width, height } = display.bounds
+  // Use bounds for position, but size for dimensions (bounds may differ with DPI scaling)
+  const { x, y } = display.bounds
+  const { width, height } = display.size
 
   const win = new BrowserWindow({
     x,
@@ -192,6 +198,7 @@ function getOrCreateOverlayWindow(display: Electron.Display, mode: 'screenshot' 
     skipTaskbar: true,
     resizable: false,
     fullscreen: false,
+    enableLargerThanScreen: true,
     show: false,
     webPreferences: {
       preload: PRELOAD,
@@ -199,6 +206,11 @@ function getOrCreateOverlayWindow(display: Electron.Display, mode: 'screenshot' 
       nodeIntegration: false,
     },
   })
+
+  // Force correct bounds — on mixed-DPI Windows setups, Electron may apply the
+  // primary display's scale factor when creating a window on a secondary display,
+  // resulting in a smaller-than-expected window.
+  win.setBounds({ x, y, width, height })
 
   win.setIgnoreMouseEvents(false)
 
