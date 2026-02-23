@@ -73,6 +73,24 @@ const SharePanel: React.FC<SharePanelProps> = ({ onExportImage }) => {
     }
   }
 
+  const handleLocalUrlCopy = async () => {
+    const dataUrl = onExportImage()
+    if (!dataUrl) return
+    try {
+      const savedPath = await window.electronAPI?.autoSave(dataUrl)
+      if (savedPath) {
+        const fileUrl = 'file:///' + savedPath.replace(/\\/g, '/')
+        copyTextToClipboard(fileUrl)
+        const fileName = savedPath.split(/[\\/]/).pop() || savedPath
+        showStatus(`URLコピー済み: ${fileName}`)
+      } else {
+        showStatus('保存に失敗しました', true)
+      }
+    } catch {
+      showStatus('保存に失敗しました', true)
+    }
+  }
+
   const handleCopyImage = async () => {
     const dataUrl = onExportImage()
     if (!dataUrl) return
@@ -93,6 +111,19 @@ const SharePanel: React.FC<SharePanelProps> = ({ onExportImage }) => {
   return (
     <>
       <div style={styles.panel}>
+        <button
+          className="share-btn"
+          style={{ background: '#2a2a4a', color: '#b0b0d0' }}
+          onClick={handleLocalUrlCopy}
+          title="ローカル保存してURLをコピー"
+        >
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+            <path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/>
+            <path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/>
+          </svg>
+          URL Copy
+        </button>
+
         <button
           className="share-btn"
           style={{ background: '#2a2a4a', color: '#b0b0d0' }}

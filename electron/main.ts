@@ -145,6 +145,11 @@ function createMainWindow() {
 function closeAllOverlays() {
   overlayWindows.forEach(win => {
     if (win && !win.isDestroyed()) {
+      // Clear any pending overlay-ready timeouts
+      if ((win as any)._overlayTimeout) {
+        clearTimeout((win as any)._overlayTimeout)
+        ;(win as any)._overlayTimeout = null
+      }
       win.hide()
     }
   })
@@ -157,14 +162,22 @@ function getOrCreateOverlayWindow(display: Electron.Display, mode: 'screenshot' 
   const poolKey = display.id
   const existing = overlayPool.get(poolKey)
 
+  console.log(`[getOrCreateOverlay] display=${display.id} mode=${mode} bounds=${JSON.stringify(display.bounds)} size=${JSON.stringify(display.size)} scaleFactor=${display.scaleFactor} pooled=${!!existing}`)
+
   if (existing && !existing.isDestroyed()) {
-    if (mode === 'gif') {
+    // Check if pooled window's renderer has crashed — cannot reuse
+    if (existing.webContents.isCrashed()) {
+      console.log('[getOrCreateOverlay] Pooled window renderer crashed, destroying for display', display.id)
+      overlayPool.delete(poolKey)
+      existing.destroy()
+    } else if (mode === 'gif') {
       // GIF mode: destroy pooled window and create fresh to avoid GPU crash
       console.log('[getOrCreateOverlay] GIF mode: destroying pooled window for display', display.id)
       overlayPool.delete(poolKey)
       existing.destroy()
     } else {
       // Screenshot mode: reuse pooled window
+      console.log('[getOrCreateOverlay] Reusing pooled window for display', display.id)
       const hash = `#/capture?displayId=${display.id}`
       const url = process.env.VITE_DEV_SERVER_URL
         ? `${process.env.VITE_DEV_SERVER_URL}${hash}`
@@ -174,9 +187,30 @@ function getOrCreateOverlayWindow(display: Electron.Display, mode: 'screenshot' 
       // Re-apply correct bounds in case display config changed
       const { x, y } = display.bounds
       const { width, height } = display.size
+      const boundsBefore = existing.getBounds()
       existing.setBounds({ x, y, width, height })
+      const boundsAfter = existing.getBounds()
+      console.log(`[getOrCreateOverlay] Reuse setBounds: before=${JSON.stringify(boundsBefore)} after=${JSON.stringify(boundsAfter)} expected=${JSON.stringify({ x, y, width, height })}`)
       ;(existing as any).isReadyToReceive = false
       existing.loadURL(url)
+
+      // Timeout: if overlay-ready doesn't arrive within 5s, force show
+      const timeoutId = setTimeout(() => {
+        if (!(existing as any).isReadyToReceive && !existing.isDestroyed() && pendingScreenshots.has(display.id)) {
+          console.warn(`[getOrCreateOverlay] Timeout waiting for overlay-ready on reused window, display=${display.id}. Force showing.`)
+          const pending = pendingScreenshots.get(display.id)
+          if (pending) {
+            existing.webContents.send('screenshot:data', pending.dataUrl, {
+              width: pending.width,
+              height: pending.height,
+              scaleFactor: pending.scaleFactor,
+            })
+          }
+          existing.show()
+        }
+      }, 5000)
+      ;(existing as any)._overlayTimeout = timeoutId
+
       overlayWindows.push(existing)
       return existing
     }
@@ -186,6 +220,8 @@ function getOrCreateOverlayWindow(display: Electron.Display, mode: 'screenshot' 
   // Use bounds for position, but size for dimensions (bounds may differ with DPI scaling)
   const { x, y } = display.bounds
   const { width, height } = display.size
+
+  console.log(`[getOrCreateOverlay] Creating new window for display ${display.id}: x=${x} y=${y} w=${width} h=${height}`)
 
   const win = new BrowserWindow({
     x,
@@ -212,6 +248,16 @@ function getOrCreateOverlayWindow(display: Electron.Display, mode: 'screenshot' 
   // resulting in a smaller-than-expected window.
   win.setBounds({ x, y, width, height })
 
+  // Verify bounds after ready-to-show and correct if needed
+  win.once('ready-to-show', () => {
+    const current = win.getBounds()
+    console.log(`[Overlay] ready-to-show display=${display.id} currentBounds=${JSON.stringify(current)} expected=${JSON.stringify({ x, y, width, height })}`)
+    if (current.width !== width || current.height !== height || current.x !== x || current.y !== y) {
+      console.log(`[Overlay] Correcting bounds for display ${display.id}`)
+      win.setBounds({ x, y, width, height })
+    }
+  })
+
   win.setIgnoreMouseEvents(false)
 
   const hash = mode === 'gif' ? `#/capture-gif?displayId=${display.id}` : `#/capture?displayId=${display.id}`
@@ -221,6 +267,23 @@ function getOrCreateOverlayWindow(display: Electron.Display, mode: 'screenshot' 
 
   win.loadURL(url)
     ; (win as any).displayId = display.id
+
+  // Timeout: if overlay-ready doesn't arrive within 5s, force show
+  const timeoutId = setTimeout(() => {
+    if (!(win as any).isReadyToReceive && !win.isDestroyed() && pendingScreenshots.has(display.id)) {
+      console.warn(`[getOrCreateOverlay] Timeout waiting for overlay-ready on new window, display=${display.id}. Force showing.`)
+      const pending = pendingScreenshots.get(display.id)
+      if (pending) {
+        win.webContents.send('screenshot:data', pending.dataUrl, {
+          width: pending.width,
+          height: pending.height,
+          scaleFactor: pending.scaleFactor,
+        })
+      }
+      win.show()
+    }
+  }, 5000)
+  ;(win as any)._overlayTimeout = timeoutId
 
   win.on('closed', () => {
     overlayWindows = overlayWindows.filter(w => w !== win)
@@ -310,11 +373,15 @@ async function startCapture(mode: 'screenshot' | 'gif' = 'screenshot') {
       const screenshot = source.thumbnail.toDataURL()
 
       pendingScreenshots.set(display.id, { dataUrl: screenshot, width, height, scaleFactor })
+      console.log(`[startCapture] pendingScreenshot set for display ${display.id}: ${width}x${height} sf=${scaleFactor}`)
 
       const win = overlayWindows.find(w => (w as any).displayId === display.id)
       if (win && !win.isDestroyed() && (win as any).isReadyToReceive) {
+        console.log(`[startCapture] Sending screenshot:data + show() for display ${display.id}`)
         win.webContents.send('screenshot:data', screenshot, { width, height, scaleFactor })
         win.show()
+      } else {
+        console.log(`[startCapture] Display ${display.id}: win=${!!win} destroyed=${win?.isDestroyed()} ready=${win && (win as any).isReadyToReceive} — waiting for overlay-ready`)
       }
     })
     console.log('[startCapture] done')
@@ -336,9 +403,18 @@ ipcMain.on('capture:overlay-ready', (event) => {
   if (!win || win.isDestroyed()) return
 
   const displayId = (win as any).displayId
+  console.log(`[overlay-ready] display=${displayId}`)
+
+  // Clear timeout since overlay is ready
+  if ((win as any)._overlayTimeout) {
+    clearTimeout((win as any)._overlayTimeout)
+    ;(win as any)._overlayTimeout = null
+  }
+
   const pending = pendingScreenshots.get(displayId)
 
   if (pending) {
+    console.log(`[overlay-ready] Sending screenshot:data + show() for display ${displayId}`)
     win.webContents.send('screenshot:data', pending.dataUrl, {
       width: pending.width,
       height: pending.height,
@@ -346,6 +422,7 @@ ipcMain.on('capture:overlay-ready', (event) => {
     })
     win.show()
   } else {
+    console.log(`[overlay-ready] No pending screenshot yet for display ${displayId}, marking ready`)
     ; (win as any).isReadyToReceive = true
   }
 })
@@ -549,9 +626,15 @@ ipcMain.handle(
   async (_event, dataUrl: string): Promise<string | null> => {
     try {
       const folder = getLocalSaveFolder()
-      const fileName = `snap_${generateTimestamp()}.png`
+      // Detect MIME type to use correct file extension
+      const mimeMatch = dataUrl.match(/^data:image\/(png|gif|jpeg|webp);base64,/)
+      const imageType = mimeMatch ? mimeMatch[1] : 'png'
+      const prefix = imageType === 'gif' ? 'gif' : 'snap'
+      const ext = imageType === 'jpeg' ? 'jpg' : imageType
+      const fileName = `${prefix}_${generateTimestamp()}.${ext}`
       const filePath = path.join(folder, fileName)
-      const base64Data = dataUrl.replace(/^data:image\/png;base64,/, '')
+      // Generic regex to strip any image data URL prefix
+      const base64Data = dataUrl.replace(/^data:image\/[a-z]+;base64,/, '')
       await fs.promises.writeFile(filePath, Buffer.from(base64Data, 'base64'))
       return filePath
     } catch (err) {

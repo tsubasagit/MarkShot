@@ -67,6 +67,9 @@ const AnnotationEditor: React.FC<AnnotationEditorProps> = ({
   const [stageScale, setStageScale] = useState(1)
   const [stagePos, setStagePos] = useState({ x: 0, y: 0 })
 
+  // Capture mode toggle
+  const [captureMode, setCaptureMode] = useState<'screenshot' | 'gif'>('screenshot')
+
   // GIF recording state
   const [isGifRecording, setIsGifRecording] = useState(false)
   const [gifElapsed, setGifElapsed] = useState(0)
@@ -214,7 +217,7 @@ const AnnotationEditor: React.FC<AnnotationEditorProps> = ({
     }
   }, [])
 
-  // New screenshot with auto-save
+  // Unified new capture: auto-saves current work, then starts capture based on mode
   const handleNewCapture = async () => {
     try {
       if (image) {
@@ -224,26 +227,15 @@ const AnnotationEditor: React.FC<AnnotationEditorProps> = ({
         }
       }
       setGifPreviewUrl(null)
-      window.electronAPI?.startCapture()
+
+      if (captureMode === 'gif') {
+        console.log('[handleNewCapture] starting GIF capture')
+        window.electronAPI?.startGifCapture()
+      } else {
+        window.electronAPI?.startCapture()
+      }
     } catch (err) {
       console.error('[handleNewCapture] error:', err)
-    }
-  }
-
-  // GIF recording — start region selection via overlay
-  const handleRecordGif = async () => {
-    console.log('[handleRecordGif] called')
-    try {
-      if (image) {
-        const dataUrl = exportImage()
-        if (dataUrl) await window.electronAPI?.autoSave(dataUrl)
-      }
-
-      setGifPreviewUrl(null)
-      console.log('[handleRecordGif] calling startGifCapture')
-      window.electronAPI?.startGifCapture()
-    } catch (err) {
-      console.error('[handleRecordGif] error:', err)
     }
   }
 
@@ -1172,7 +1164,7 @@ const AnnotationEditor: React.FC<AnnotationEditorProps> = ({
           justifyContent: 'center',
         }}
       >
-        {/* Capture / Record buttons */}
+        {/* Capture: New button + mode toggle */}
         <div style={{
           display: 'flex',
           gap: 2,
@@ -1182,34 +1174,11 @@ const AnnotationEditor: React.FC<AnnotationEditorProps> = ({
           border: '1px solid #2a2a4a',
           padding: '4px 6px',
         }}>
-          {/* New screenshot */}
-          <button
-            className="action-btn"
-            onClick={handleNewCapture}
-            disabled={anyRecording}
-            style={{
-              width: 38,
-              height: 38,
-              color: '#b0b0d0',
-              flexDirection: 'column',
-              gap: 1,
-            }}
-            title="新規スクリーンショット (Ctrl+Shift+S)"
-          >
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-              <line x1="12" y1="5" x2="12" y2="19" />
-              <line x1="5" y1="12" x2="19" y2="12" />
-            </svg>
-            <span style={{ fontSize: 8, lineHeight: 1 }}>New</span>
-          </button>
-
-          <div style={{ width: 1, height: 24, background: '#2a2a4a' }} />
-
-          {/* GIF recording button */}
+          {/* New capture button */}
           {!isGifRecording ? (
             <button
               className="action-btn"
-              onClick={handleRecordGif}
+              onClick={handleNewCapture}
               disabled={anyRecording}
               style={{
                 width: 38,
@@ -1219,13 +1188,13 @@ const AnnotationEditor: React.FC<AnnotationEditorProps> = ({
                 flexDirection: 'column',
                 gap: 1,
               }}
-              title="画面録画（GIF）"
+              title={captureMode === 'gif' ? '新規GIF録画' : '新規スクリーンショット (Ctrl+Shift+S)'}
             >
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
-                <circle cx="12" cy="12" r="9" />
-                <circle cx="12" cy="12" r="3.5" fill="currentColor" stroke="none" />
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                <line x1="12" y1="5" x2="12" y2="19" />
+                <line x1="5" y1="12" x2="19" y2="12" />
               </svg>
-              <span style={{ fontSize: 8, lineHeight: 1 }}>{gifPreparing ? 'Prep' : gifEncoding ? 'Encode' : 'Record'}</span>
+              <span style={{ fontSize: 8, lineHeight: 1 }}>{gifPreparing ? 'Prep' : gifEncoding ? 'Encode' : 'New'}</span>
             </button>
           ) : (
             <button
@@ -1251,6 +1220,50 @@ const AnnotationEditor: React.FC<AnnotationEditorProps> = ({
             </button>
           )}
 
+          <div style={{ width: 1, height: 24, background: '#2a2a4a' }} />
+
+          {/* Mode toggle: Screenshot | GIF */}
+          <div style={{
+            display: 'flex',
+            borderRadius: 6,
+            overflow: 'hidden',
+            border: '1px solid #2a2a4a',
+          }}>
+            <button
+              className="action-btn"
+              onClick={() => setCaptureMode('screenshot')}
+              disabled={anyRecording}
+              style={{
+                height: 30,
+                padding: '0 8px',
+                fontSize: 10,
+                fontWeight: 600,
+                borderRadius: 0,
+                color: captureMode === 'screenshot' ? '#0f0f1a' : '#6c7086',
+                background: captureMode === 'screenshot' ? '#00FFFF' : 'transparent',
+              }}
+              title="スクリーンショットモード"
+            >
+              Screenshot
+            </button>
+            <button
+              className="action-btn"
+              onClick={() => setCaptureMode('gif')}
+              disabled={anyRecording}
+              style={{
+                height: 30,
+                padding: '0 8px',
+                fontSize: 10,
+                fontWeight: 600,
+                borderRadius: 0,
+                color: captureMode === 'gif' ? '#0f0f1a' : '#6c7086',
+                background: captureMode === 'gif' ? '#ff9100' : 'transparent',
+              }}
+              title="GIF録画モード"
+            >
+              GIF
+            </button>
+          </div>
         </div>
         <Toolbar
           activeTool={activeTool}
