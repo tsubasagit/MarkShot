@@ -3,6 +3,7 @@ import RegionSelector from './components/RegionSelector'
 import AnnotationEditor from './components/AnnotationEditor'
 import RecordingOverlay from './components/RecordingOverlay'
 import RecordingControl from './components/RecordingControl'
+import CountdownOverlay from './components/CountdownOverlay'
 
 const App: React.FC = () => {
   const [hash] = useState(() => window.location.hash)
@@ -12,7 +13,8 @@ const App: React.FC = () => {
   const isCaptureGif = hash.startsWith('#/capture-gif?') || hash === '#/capture-gif'
   const isRecordingOverlay = hash.startsWith('#/recording-overlay/')
   const isRecordingControl = hash === '#/recording-control'
-  const isOverlay = isCapture || isCaptureGif || isRecordingOverlay || isRecordingControl
+  const isCountdown = hash === '#/countdown'
+  const isOverlay = isCapture || isCaptureGif || isRecordingOverlay || isRecordingControl || isCountdown
 
   useEffect(() => {
     if (isOverlay) {
@@ -55,6 +57,10 @@ const App: React.FC = () => {
 
   if (isRecordingControl) {
     return <RecordingControl />
+  }
+
+  if (isCountdown) {
+    return <CountdownOverlay />
   }
 
   // Always show editor (with or without image)

@@ -32,7 +32,12 @@ const RegionSelector: React.FC<RegionSelectorProps> = ({ mode = 'screenshot' }) 
       const img = new Image()
       img.onload = () => {
         setScreenshotImage(img)
-        window.electronAPI?.notifyScreenshotLoaded()
+        // キャンバス描画完了後にウィンドウを表示する（描画前だとクリックが素通りする）
+        requestAnimationFrame(() => {
+          requestAnimationFrame(() => {
+            window.electronAPI?.notifyScreenshotLoaded()
+          })
+        })
       }
       img.src = dataUrl
     })

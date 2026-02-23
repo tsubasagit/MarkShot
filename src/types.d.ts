@@ -46,6 +46,16 @@ declare global {
       stopRecordingFromControl: () => void
       onGifStopRecording: (callback: () => void) => () => void
 
+      // GIF Countdown
+      showGifCountdown: () => void
+      tickGifCountdown: (n: number) => void
+      hideGifCountdown: () => void
+      onCountdownTick: (callback: (n: number) => void) => () => void
+
+      // Recording state
+      notifyRecordingStarted: () => void
+      notifyRecordingStopped: () => void
+
       // Google Drive
       uploadToGoogleDrive: (
         dataUrl: string

@@ -77,7 +77,6 @@ const AnnotationEditor: React.FC<AnnotationEditorProps> = ({
   const [gifPreparing, setGifPreparing] = useState(false)
   const [gifEncoding, setGifEncoding] = useState(false)
   const [gifPreviewUrl, setGifPreviewUrl] = useState<string | null>(null)
-  const [gifCountdown, setGifCountdown] = useState<number | null>(null)
   const gifRef = useRef<{ stream: MediaStream; stop: () => void } | null>(null)
   const gifTimerRef = useRef<number | null>(null)
 
@@ -229,24 +228,21 @@ const AnnotationEditor: React.FC<AnnotationEditorProps> = ({
       setGifPreviewUrl(null)
 
       if (captureMode === 'gif') {
-        console.log('[handleNewCapture] starting GIF capture')
         window.electronAPI?.startGifCapture()
       } else {
         window.electronAPI?.startCapture()
       }
     } catch (err) {
-      console.error('[handleNewCapture] error:', err)
+      console.error('handleNewCapture error:', err)
     }
   }
 
   // Start recording with selected region
   const startGifWithRegion = useCallback(async (region: { x: number; y: number; w: number; h: number; scaleFactor: number }) => {
-    console.log('[startGifWithRegion] called, region:', region)
     setGifPreparing(true)
     showStatus('GIF録画を準備中...')
 
     try {
-      console.log('[startGifWithRegion] calling getDisplayMedia...')
       const stream = await navigator.mediaDevices.getDisplayMedia({
         video: {
           cursor: 'never',
@@ -256,14 +252,17 @@ const AnnotationEditor: React.FC<AnnotationEditorProps> = ({
 
       setGifPreparing(false)
 
-      // 3秒カウントダウン（画面上にオーバーレイ表示）
+      // エディタを即座に非表示
+      window.electronAPI?.hideWindow()
+
+      // カウントダウンを別ウィンドウで表示
+      window.electronAPI?.showGifCountdown()
       for (let i = 3; i > 0; i--) {
-        setGifCountdown(i)
+        window.electronAPI?.tickGifCountdown(i)
         await new Promise((r) => setTimeout(r, 1000))
       }
-      setGifCountdown(null)
+      window.electronAPI?.hideGifCountdown()
 
-      window.electronAPI?.hideWindow()
       await new Promise((r) => setTimeout(r, 300))
 
       const videoTrack = stream.getVideoTracks()[0]
@@ -352,6 +351,7 @@ const AnnotationEditor: React.FC<AnnotationEditorProps> = ({
         setGifElapsed(0)
         setGifFrameCount(0)
         gifRef.current = null
+        window.electronAPI?.notifyRecordingStopped()
 
         video.pause()
         video.srcObject = null
@@ -415,6 +415,7 @@ const AnnotationEditor: React.FC<AnnotationEditorProps> = ({
 
       gifRef.current = { stream, stop: stopGif }
       setIsGifRecording(true)
+      window.electronAPI?.notifyRecordingStarted()
       setGifElapsed(0)
       setGifFrameCount(0)
       gifTimerRef.current = window.setInterval(() => {
@@ -424,7 +425,7 @@ const AnnotationEditor: React.FC<AnnotationEditorProps> = ({
       window.electronAPI?.showRecordingUI(region)
     } catch (err: any) {
       setGifPreparing(false)
-      setGifCountdown(null)
+      window.electronAPI?.hideGifCountdown()
       window.electronAPI?.showWindow()
       if (err.name !== 'NotAllowedError') {
         showStatus(`GIF録画エラー: ${err.message}`, true)
@@ -1157,7 +1158,7 @@ const AnnotationEditor: React.FC<AnnotationEditorProps> = ({
       <div
         style={{
           padding: '8px 12px',
-          display: gifCountdown !== null ? 'none' : 'flex',
+          display: 'flex',
           gap: 10,
           alignItems: 'flex-start',
           width: '100%',
@@ -1188,7 +1189,7 @@ const AnnotationEditor: React.FC<AnnotationEditorProps> = ({
                 flexDirection: 'column',
                 gap: 1,
               }}
-              title={captureMode === 'gif' ? '新規GIF録画' : '新規スクリーンショット (Ctrl+Shift+S)'}
+              title={captureMode === 'gif' ? '新規GIF録画' : '新規スクリーンショット'}
             >
               <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
                 <line x1="12" y1="5" x2="12" y2="19" />
@@ -1290,7 +1291,7 @@ const AnnotationEditor: React.FC<AnnotationEditorProps> = ({
       <div
         style={{
           flex: 1,
-          display: gifCountdown !== null ? 'none' : 'flex',
+          display: 'flex',
           alignItems: 'center',
           justifyContent: 'center',
           overflow: 'auto',
@@ -1334,11 +1335,8 @@ const AnnotationEditor: React.FC<AnnotationEditorProps> = ({
             </svg>
             <h2>MarkShot</h2>
             <p>
-              <kbd>Ctrl+Shift+S</kbd> または <strong>New</strong> ボタンでキャプチャ開始<br />
-              <kbd>Record</kbd> ボタンでGIF録画<br /><br />
-              <span style={{ color: '#555', fontSize: 11 }}>
-                トレイアイコンのダブルクリックでもキャプチャできます
-              </span>
+              <strong>New</strong> ボタンでキャプチャ開始<br />
+              GIFモードに切り替えてGIF録画
             </p>
           </div>
         ) : (
@@ -1397,7 +1395,7 @@ const AnnotationEditor: React.FC<AnnotationEditorProps> = ({
       </div>
 
       {/* Bottom panel */}
-      <div style={{ padding: '8px 0', display: gifCountdown !== null ? 'none' : 'block' }}>
+      <div style={{ padding: '8px 0' }}>
         <SharePanel onExportImage={exportImage} />
       </div>
 
@@ -1419,15 +1417,6 @@ const AnnotationEditor: React.FC<AnnotationEditorProps> = ({
           }}
         >
           {statusMsg.text}
-        </div>
-      )}
-
-      {/* B4: GIF countdown overlay (visible on screen) */}
-      {gifCountdown !== null && (
-        <div className="gif-countdown-overlay">
-          <div className="gif-countdown-number" key={gifCountdown}>
-            {gifCountdown}
-          </div>
         </div>
       )}
 

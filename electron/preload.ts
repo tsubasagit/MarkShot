@@ -117,6 +117,34 @@ contextBridge.exposeInMainWorld('electronAPI', {
     }
   },
 
+  // GIF Countdown
+  showGifCountdown: () => {
+    ipcRenderer.send('gif:show-countdown')
+  },
+  tickGifCountdown: (n: number) => {
+    ipcRenderer.send('gif:countdown-tick', n)
+  },
+  hideGifCountdown: () => {
+    ipcRenderer.send('gif:hide-countdown')
+  },
+  onCountdownTick: (callback: (n: number) => void) => {
+    const handler = (_event: Electron.IpcRendererEvent, n: number) => {
+      callback(n)
+    }
+    ipcRenderer.on('countdown:tick', handler)
+    return () => {
+      ipcRenderer.removeListener('countdown:tick', handler)
+    }
+  },
+
+  // Recording state
+  notifyRecordingStarted: () => {
+    ipcRenderer.send('gif:recording-started')
+  },
+  notifyRecordingStopped: () => {
+    ipcRenderer.send('gif:recording-stopped')
+  },
+
   // Google Drive
   uploadToGoogleDrive: (
     dataUrl: string
