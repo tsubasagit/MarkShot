@@ -2,6 +2,8 @@
 
 **MarkShot v1.3.0 開発記録**
 
+`#Electron` `#Windows` `#TypeScript` `#HighDPI` `#MultiMonitor` `#BrowserWindow` `#desktopCapturer` `#ScreenCapture` `#WS_EX_LAYERED` `#transparent` `#debugging` `#ClaudeCode`
+
 ---
 
 ## はじめに
