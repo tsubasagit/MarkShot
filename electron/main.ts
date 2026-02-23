@@ -145,7 +145,6 @@ function createMainWindow() {
 function closeAllOverlays() {
   overlayWindows.forEach(win => {
     if (win && !win.isDestroyed()) {
-      // Clear any pending overlay-ready timeouts
       if ((win as any)._overlayTimeout) {
         clearTimeout((win as any)._overlayTimeout)
         ;(win as any)._overlayTimeout = null
@@ -158,6 +157,16 @@ function closeAllOverlays() {
   overlayReadyWaitingCount = 0
 }
 
+function cleanupBeforeQuit() {
+  closeAllOverlays()
+  overlayPool.forEach(win => { if (win && !win.isDestroyed()) win.destroy() })
+  overlayPool.clear()
+  if (recordingOverlayWindow && !recordingOverlayWindow.isDestroyed()) { recordingOverlayWindow.destroy(); recordingOverlayWindow = null }
+  if (recordingControlWindow && !recordingControlWindow.isDestroyed()) { recordingControlWindow.destroy(); recordingControlWindow = null }
+  if (tray) { tray.destroy(); tray = null }
+  if (mainWindow && !mainWindow.isDestroyed()) { mainWindow.destroy(); mainWindow = null }
+}
+
 function getOrCreateOverlayWindow(display: Electron.Display, mode: 'screenshot' | 'gif' = 'screenshot'): BrowserWindow {
   const poolKey = display.id
   const existing = overlayPool.get(poolKey)
@@ -165,55 +174,8 @@ function getOrCreateOverlayWindow(display: Electron.Display, mode: 'screenshot' 
   console.log(`[getOrCreateOverlay] display=${display.id} mode=${mode} bounds=${JSON.stringify(display.bounds)} size=${JSON.stringify(display.size)} scaleFactor=${display.scaleFactor} pooled=${!!existing}`)
 
   if (existing && !existing.isDestroyed()) {
-    // Check if pooled window's renderer has crashed — cannot reuse
-    if (existing.webContents.isCrashed()) {
-      console.log('[getOrCreateOverlay] Pooled window renderer crashed, destroying for display', display.id)
-      overlayPool.delete(poolKey)
-      existing.destroy()
-    } else if (mode === 'gif') {
-      // GIF mode: destroy pooled window and create fresh to avoid GPU crash
-      console.log('[getOrCreateOverlay] GIF mode: destroying pooled window for display', display.id)
-      overlayPool.delete(poolKey)
-      existing.destroy()
-    } else {
-      // Screenshot mode: reuse pooled window
-      console.log('[getOrCreateOverlay] Reusing pooled window for display', display.id)
-      const hash = `#/capture?displayId=${display.id}`
-      const url = process.env.VITE_DEV_SERVER_URL
-        ? `${process.env.VITE_DEV_SERVER_URL}${hash}`
-        : `file://${path.join(DIST, 'index.html')}${hash}`
-
-      existing.hide()
-      // Re-apply correct bounds in case display config changed
-      const { x, y } = display.bounds
-      const { width, height } = display.size
-      const boundsBefore = existing.getBounds()
-      existing.setBounds({ x, y, width, height })
-      const boundsAfter = existing.getBounds()
-      console.log(`[getOrCreateOverlay] Reuse setBounds: before=${JSON.stringify(boundsBefore)} after=${JSON.stringify(boundsAfter)} expected=${JSON.stringify({ x, y, width, height })}`)
-      ;(existing as any).isReadyToReceive = false
-      existing.loadURL(url)
-
-      // Timeout: if overlay-ready doesn't arrive within 5s, force show
-      const timeoutId = setTimeout(() => {
-        if (!(existing as any).isReadyToReceive && !existing.isDestroyed() && pendingScreenshots.has(display.id)) {
-          console.warn(`[getOrCreateOverlay] Timeout waiting for overlay-ready on reused window, display=${display.id}. Force showing.`)
-          const pending = pendingScreenshots.get(display.id)
-          if (pending) {
-            existing.webContents.send('screenshot:data', pending.dataUrl, {
-              width: pending.width,
-              height: pending.height,
-              scaleFactor: pending.scaleFactor,
-            })
-          }
-          existing.show()
-        }
-      }, 5000)
-      ;(existing as any)._overlayTimeout = timeoutId
-
-      overlayWindows.push(existing)
-      return existing
-    }
+    overlayPool.delete(poolKey)
+    existing.destroy()
   }
 
   // Create new window
@@ -320,8 +282,7 @@ function createTray() {
     {
       label: '終了',
       click: () => {
-        mainWindow?.destroy()
-        mainWindow = null
+        cleanupBeforeQuit()
         app.quit()
       },
     },
@@ -332,63 +293,52 @@ function createTray() {
 }
 
 async function startCapture(mode: 'screenshot' | 'gif' = 'screenshot') {
-  console.log('[startCapture] mode:', mode)
   try {
-    console.log('[startCapture] step 1: closeAllOverlays')
     closeAllOverlays()
-
-    console.log('[startCapture] step 2: getAllDisplays')
-    const allDisplays = screen.getAllDisplays()
-    overlayReadyWaitingCount = allDisplays.length
-    console.log('[startCapture] displays:', allDisplays.length)
-
-    console.log('[startCapture] step 3: creating overlay windows')
-    for (const display of allDisplays) {
-      console.log('[startCapture] creating overlay for display', display.id, 'pool has:', overlayPool.has(display.id))
-      getOrCreateOverlayWindow(display, mode)
-    }
-    console.log('[startCapture] step 3 done')
-
-    if (mainWindow && !mainWindow.isDestroyed() && mainWindow.isVisible()) {
-      console.log('[startCapture] step 4: hiding mainWindow')
+    // Windows: 2回目以降のキャプチャでエディタが残像する問題を軽減するため、
+    // キャプチャ前にメインウィンドウを破棄し、取得を2回行う
+    if (process.platform === 'win32' && mainWindow && !mainWindow.isDestroyed()) {
+      mainWindow.destroy()
+      mainWindow = null
+      await new Promise((r) => setTimeout(r, 1000))
+    } else if (mainWindow && !mainWindow.isDestroyed() && mainWindow.isVisible()) {
+      mainWindow.setSkipTaskbar(true)
+      mainWindow.setOpacity(0)
+      const b = mainWindow.getBounds()
+      mainWindow.setBounds({ ...b, x: -b.width - 1000, y: -b.height - 1000 })
       mainWindow.hide()
-      await new Promise((r) => setTimeout(r, 80))
+      await new Promise((r) => setTimeout(r, 300))
     }
 
-    // Use actual max display resolution instead of fixed 4000x4000
+    const allDisplays = screen.getAllDisplays()
     const maxWidth = Math.max(...allDisplays.map(d => d.size.width * d.scaleFactor))
     const maxHeight = Math.max(...allDisplays.map(d => d.size.height * d.scaleFactor))
-    console.log('[startCapture] step 5: desktopCapturer.getSources, size:', maxWidth, 'x', maxHeight)
-
-    const sources = await desktopCapturer.getSources({
-      types: ['screen'],
-      thumbnailSize: { width: maxWidth, height: maxHeight }
-    })
-    console.log('[startCapture] step 5 done, sources:', sources.length)
-
+    const capturerOpts = { types: ['screen'] as const, thumbnailSize: { width: maxWidth, height: maxHeight } }
+    if (process.platform === 'win32') {
+      await desktopCapturer.getSources(capturerOpts)
+      await new Promise((r) => setTimeout(r, 500))
+    }
+    const sources = await desktopCapturer.getSources(capturerOpts)
     allDisplays.forEach(display => {
       const source = sources.find(s => s.display_id === String(display.id)) || sources[0]
       const { width, height } = display.size
-      const scaleFactor = display.scaleFactor
-      const screenshot = source.thumbnail.toDataURL()
-
-      pendingScreenshots.set(display.id, { dataUrl: screenshot, width, height, scaleFactor })
-      console.log(`[startCapture] pendingScreenshot set for display ${display.id}: ${width}x${height} sf=${scaleFactor}`)
-
-      const win = overlayWindows.find(w => (w as any).displayId === display.id)
-      if (win && !win.isDestroyed() && (win as any).isReadyToReceive) {
-        console.log(`[startCapture] Sending screenshot:data + show() for display ${display.id}`)
-        win.webContents.send('screenshot:data', screenshot, { width, height, scaleFactor })
-        win.show()
-      } else {
-        console.log(`[startCapture] Display ${display.id}: win=${!!win} destroyed=${win?.isDestroyed()} ready=${win && (win as any).isReadyToReceive} — waiting for overlay-ready`)
-      }
+      pendingScreenshots.set(display.id, { dataUrl: source.thumbnail.toDataURL(), width, height, scaleFactor: display.scaleFactor })
     })
-    console.log('[startCapture] done')
 
+    overlayReadyWaitingCount = allDisplays.length
+    for (const display of allDisplays) {
+      getOrCreateOverlayWindow(display, mode)
+    }
   } catch (err) {
     console.error('Failed to capture screen:', err)
-    if (mainWindow && !mainWindow.isDestroyed()) mainWindow.show()
+    if (!mainWindow || mainWindow.isDestroyed()) createMainWindow()
+    if (mainWindow && !mainWindow.isDestroyed()) {
+      mainWindow.setSize(1100, 750)
+      mainWindow.center()
+      mainWindow.setOpacity(1)
+      mainWindow.setSkipTaskbar(false)
+      mainWindow.show()
+    }
   }
 }
 
@@ -403,7 +353,6 @@ ipcMain.on('capture:overlay-ready', (event) => {
   if (!win || win.isDestroyed()) return
 
   const displayId = (win as any).displayId
-  console.log(`[overlay-ready] display=${displayId}`)
 
   // Clear timeout since overlay is ready
   if ((win as any)._overlayTimeout) {
@@ -414,17 +363,20 @@ ipcMain.on('capture:overlay-ready', (event) => {
   const pending = pendingScreenshots.get(displayId)
 
   if (pending) {
-    console.log(`[overlay-ready] Sending screenshot:data + show() for display ${displayId}`)
     win.webContents.send('screenshot:data', pending.dataUrl, {
       width: pending.width,
       height: pending.height,
       scaleFactor: pending.scaleFactor,
     })
-    win.show()
+    // Show only after renderer has loaded the image (capture:screenshot-loaded)
   } else {
-    console.log(`[overlay-ready] No pending screenshot yet for display ${displayId}, marking ready`)
-    ; (win as any).isReadyToReceive = true
+    ;(win as any).isReadyToReceive = true
   }
+})
+
+ipcMain.on('capture:screenshot-loaded', (event) => {
+  const win = BrowserWindow.fromWebContents(event.sender)
+  if (win && !win.isDestroyed()) win.show()
 })
 
 ipcMain.on('capture:region-selected', (event, regionData: string) => {
@@ -436,8 +388,14 @@ ipcMain.on('capture:region-selected', (event, regionData: string) => {
 
   mainWindow!.setSize(1100, 750)
   mainWindow!.center()
-  mainWindow!.show()
-  mainWindow!.focus()
+  mainWindow!.setOpacity(1)
+  mainWindow!.setSkipTaskbar(false)
+  if (process.platform !== 'win32') {
+    mainWindow!.show()
+    mainWindow!.focus()
+  } else if (tray) {
+    tray.displayBalloon({ title: 'MarkShot', content: 'キャプチャしました。トレイメニュー「ウィンドウを表示」で編集できます。', iconType: 'info' })
+  }
 
   const sendImage = () => {
     if (mainWindow && !mainWindow.isDestroyed()) {
@@ -456,7 +414,14 @@ ipcMain.on('editor:request-image', () => {
 
 ipcMain.on('capture:cancel', () => {
   closeAllOverlays()
-  if (mainWindow && !mainWindow.isDestroyed()) mainWindow.show()
+  if (!mainWindow || mainWindow.isDestroyed()) createMainWindow()
+  if (mainWindow && !mainWindow.isDestroyed()) {
+    mainWindow.setSize(1100, 750)
+    mainWindow.center()
+    mainWindow.setOpacity(1)
+    mainWindow.setSkipTaskbar(false)
+    mainWindow.show()
+  }
 })
 
 // ---- IPC: GIF Capture (region selection) ----

@@ -8,6 +8,9 @@ contextBridge.exposeInMainWorld('electronAPI', {
   notifyOverlayReady: () => {
     ipcRenderer.send('capture:overlay-ready')
   },
+  notifyScreenshotLoaded: () => {
+    ipcRenderer.send('capture:screenshot-loaded')
+  },
   onScreenshotData: (
     callback: (
       dataUrl: string,

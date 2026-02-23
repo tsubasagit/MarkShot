@@ -6,6 +6,7 @@ declare global {
       // Capture
       startCapture: () => void
       notifyOverlayReady: () => void
+      notifyScreenshotLoaded: () => void
       onScreenshotData: (
         callback: (
           dataUrl: string,

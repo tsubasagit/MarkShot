@@ -27,9 +27,13 @@ const RegionSelector: React.FC<RegionSelectorProps> = ({ mode = 'screenshot' }) 
   useEffect(() => {
     // Register the screenshot data listener FIRST
     const cleanupScreenshot = window.electronAPI?.onScreenshotData((dataUrl, info) => {
+      setScreenshotImage(null)
       setDisplayInfo(info)
       const img = new Image()
-      img.onload = () => setScreenshotImage(img)
+      img.onload = () => {
+        setScreenshotImage(img)
+        window.electronAPI?.notifyScreenshotLoaded()
+      }
       img.src = dataUrl
     })
 
