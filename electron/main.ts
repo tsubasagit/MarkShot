@@ -236,12 +236,9 @@ async function startCapture(mode: 'screenshot' | 'gif' = 'screenshot') {
   try {
     isCapturing = true
     closeAllOverlays()
-    // キャプチャ前にメインウィンドウを非表示+オフスクリーン移動（残像対策）
+    // キャプチャ前にメインウィンドウを非表示（hide()だけで十分。オフスクリーン移動はDWMのフレーム描画を壊す）
     if (mainWindow && !mainWindow.isDestroyed() && mainWindow.isVisible()) {
       mainWindow.setSkipTaskbar(true)
-      mainWindow.setOpacity(0)
-      const b = mainWindow.getBounds()
-      mainWindow.setBounds({ ...b, x: -b.width - 1000, y: -b.height - 1000 })
       mainWindow.hide()
       await new Promise((r) => setTimeout(r, 500))
     }
@@ -282,7 +279,6 @@ async function startCapture(mode: 'screenshot' | 'gif' = 'screenshot') {
     if (mainWindow && !mainWindow.isDestroyed()) {
       mainWindow.setSize(1100, 750)
       mainWindow.center()
-      mainWindow.setOpacity(1)
       mainWindow.setSkipTaskbar(false)
       mainWindow.show()
     }
@@ -346,7 +342,6 @@ ipcMain.on('capture:region-selected', (event, regionData: string) => {
 
   mainWindow!.setSize(1100, 750)
   mainWindow!.center()
-  mainWindow!.setOpacity(1)
   mainWindow!.setSkipTaskbar(false)
   mainWindow!.show()
   mainWindow!.focus()
@@ -373,7 +368,6 @@ ipcMain.on('capture:cancel', () => {
   if (mainWindow && !mainWindow.isDestroyed()) {
     mainWindow.setSize(1100, 750)
     mainWindow.center()
-    mainWindow.setOpacity(1)
     mainWindow.setSkipTaskbar(false)
     mainWindow.show()
   }
