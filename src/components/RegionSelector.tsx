@@ -11,8 +11,11 @@ interface RegionSelectorProps {
   mode?: 'screenshot' | 'gif'
 }
 
+const MIN_SIZE_PX = 20 // ワンクリック誤確定を防ぐため、これ未満は送信しない
+
 const RegionSelector: React.FC<RegionSelectorProps> = ({ mode = 'screenshot' }) => {
   const canvasRef = useRef<HTMLCanvasElement>(null)
+  const dragMoveCountRef = useRef(0) // ドラッグ中の mouseMove 回数（0 = クリックのみ）
   const [screenshotImage, setScreenshotImage] = useState<HTMLImageElement | null>(null)
   const [displayInfo, setDisplayInfo] = useState<{
     width: number
@@ -156,6 +159,7 @@ const RegionSelector: React.FC<RegionSelectorProps> = ({ mode = 'screenshot' }) 
 
   const handleMouseDown = (e: React.MouseEvent) => {
     if (e.button === 2) return // 右クリックは無視
+    dragMoveCountRef.current = 0
     setIsDragging(true)
     setStartPos({ x: e.clientX, y: e.clientY })
     setRegion({
@@ -177,6 +181,7 @@ const RegionSelector: React.FC<RegionSelectorProps> = ({ mode = 'screenshot' }) 
   const handleMouseMove = (e: React.MouseEvent) => {
     setMousePos({ x: e.clientX, y: e.clientY })
     if (!isDragging) return
+    dragMoveCountRef.current += 1
     setRegion({
       startX: startPos.x,
       startY: startPos.y,
@@ -187,6 +192,7 @@ const RegionSelector: React.FC<RegionSelectorProps> = ({ mode = 'screenshot' }) 
 
   const handleMouseUp = () => {
     if (!isDragging || !region || !screenshotImage) return
+    const moved = dragMoveCountRef.current > 0
     setIsDragging(false)
 
     const x = Math.min(region.startX, region.endX)
@@ -194,7 +200,8 @@ const RegionSelector: React.FC<RegionSelectorProps> = ({ mode = 'screenshot' }) 
     const w = Math.abs(region.endX - region.startX)
     const h = Math.abs(region.endY - region.startY)
 
-    if (w < 10 || h < 10) {
+    // クリックのみ（ドラッグなし）または範囲が小さすぎる場合は送信しない
+    if (!moved || w < MIN_SIZE_PX || h < MIN_SIZE_PX) {
       setRegion(null)
       return
     }
