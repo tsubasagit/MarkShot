@@ -3,6 +3,7 @@ import RegionSelector from './components/RegionSelector'
 import RecordingOverlay from './components/RecordingOverlay'
 import RecordingControl from './components/RecordingControl'
 import CountdownOverlay from './components/CountdownOverlay'
+import CaptureBar from './components/CaptureBar'
 
 // Konva を含むエディタは初回起動時に読まない（起動時間短縮）
 const AnnotationEditor = lazy(() => import('./components/AnnotationEditor'))
@@ -80,16 +81,53 @@ const App: React.FC = () => {
 }
 
 function Placeholder() {
+  const [captureMode, setCaptureMode] = useState<'screenshot' | 'gif'>('screenshot')
+  const handleNewCapture = () => {
+    if (captureMode === 'gif') {
+      window.electronAPI?.startGifCapture?.()
+    } else {
+      window.electronAPI?.startCapture?.()
+    }
+  }
   return (
-    <div style={{
-      display: 'flex',
-      alignItems: 'center',
-      justifyContent: 'center',
-      height: '100vh',
-      color: '#888',
-      fontSize: 14,
-    }}>
-      スクリーンショットはトレイアイコンから撮影できます
+    <div
+      style={{
+        display: 'flex',
+        flexDirection: 'column',
+        height: '100vh',
+        background: '#0f0f1a',
+        alignItems: 'center',
+      }}
+    >
+      <div
+        style={{
+          padding: '8px 12px',
+          display: 'flex',
+          gap: 10,
+          alignItems: 'flex-start',
+          width: '100%',
+          justifyContent: 'center',
+        }}
+      >
+        <CaptureBar
+          captureMode={captureMode}
+          onCaptureModeChange={setCaptureMode}
+          onNewCapture={handleNewCapture}
+          disabled={false}
+        />
+      </div>
+      <div className="empty-state" style={{ flex: 1 }}>
+        <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="#4a4a6a" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+          <rect x="3" y="3" width="18" height="18" rx="2" />
+          <circle cx="8.5" cy="8.5" r="1.5" />
+          <polyline points="21 15 16 10 5 21" />
+        </svg>
+        <h2>MarkShot</h2>
+        <p>
+          <strong>New</strong> ボタンでキャプチャ開始<br />
+          GIFモードに切り替えてGIF録画
+        </p>
+      </div>
     </div>
   )
 }

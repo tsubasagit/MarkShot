@@ -1,6 +1,6 @@
 {
   "name": "markshot",
-  "version": "1.3.2",
+  "version": "1.3.3",
   "description": "スクリーンショット＆注釈ツール",
   "main": "dist-electron/main.js",
   "scripts": {
