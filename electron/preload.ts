@@ -11,6 +11,12 @@ contextBridge.exposeInMainWorld('electronAPI', {
   notifyScreenshotLoaded: () => {
     ipcRenderer.send('capture:screenshot-loaded')
   },
+  notifyOverlayPainted: () => {
+    ipcRenderer.send('capture:overlay-painted')
+  },
+  bringOverlayToFront: () => {
+    ipcRenderer.send('capture:overlay-focus')
+  },
   onScreenshotData: (
     callback: (
       dataUrl: string,
@@ -30,6 +36,9 @@ contextBridge.exposeInMainWorld('electronAPI', {
   },
   cancelCapture: () => {
     ipcRenderer.send('capture:cancel')
+  },
+  logRegionDebug: (msg: string, data: Record<string, unknown>) => {
+    ipcRenderer.send('region-debug-log', msg, data)
   },
 
   // Editor

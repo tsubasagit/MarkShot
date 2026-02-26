@@ -7,6 +7,8 @@ declare global {
       startCapture: () => void
       notifyOverlayReady: () => void
       notifyScreenshotLoaded: () => void
+      notifyOverlayPainted: () => void
+      bringOverlayToFront: () => void
       onScreenshotData: (
         callback: (
           dataUrl: string,
@@ -15,6 +17,7 @@ declare global {
       ) => () => void
       sendRegionSelected: (regionDataUrl: string) => void
       cancelCapture: () => void
+      logRegionDebug: (msg: string, data: Record<string, unknown>) => void
 
       // Editor
       onEditorOpen: (callback: (imageDataUrl: string) => void) => () => void

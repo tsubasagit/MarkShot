@@ -1,9 +1,11 @@
-import React, { useState, useEffect } from 'react'
+import React, { useState, useEffect, Suspense, lazy } from 'react'
 import RegionSelector from './components/RegionSelector'
-import AnnotationEditor from './components/AnnotationEditor'
 import RecordingOverlay from './components/RecordingOverlay'
 import RecordingControl from './components/RecordingControl'
 import CountdownOverlay from './components/CountdownOverlay'
+
+// Konva を含むエディタは初回起動時に読まない（起動時間短縮）
+const AnnotationEditor = lazy(() => import('./components/AnnotationEditor'))
 
 const App: React.FC = () => {
   const [hash] = useState(() => window.location.hash)
@@ -63,12 +65,32 @@ const App: React.FC = () => {
     return <CountdownOverlay />
   }
 
-  // Always show editor (with or without image)
+  // 画像があるときだけ Konva エディタを読み込む（起動直後は軽いプレースホルダー）
+  if (capturedImage) {
+    return (
+      <Suspense fallback={<Placeholder />}>
+        <AnnotationEditor
+          key={capturedImage || 'empty'}
+          imageDataUrl={capturedImage}
+        />
+      </Suspense>
+    )
+  }
+  return <Placeholder />
+}
+
+function Placeholder() {
   return (
-    <AnnotationEditor
-      key={capturedImage || 'empty'}
-      imageDataUrl={capturedImage}
-    />
+    <div style={{
+      display: 'flex',
+      alignItems: 'center',
+      justifyContent: 'center',
+      height: '100vh',
+      color: '#888',
+      fontSize: 14,
+    }}>
+      スクリーンショットはトレイアイコンから撮影できます
+    </div>
   )
 }
 

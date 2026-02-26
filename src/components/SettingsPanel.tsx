@@ -270,7 +270,7 @@ const SettingsPanel: React.FC<SettingsPanelProps> = ({ onClose }) => {
         <div style={{ ...s.section, marginTop: 20, marginBottom: 0 }}>
           <div style={s.sectionTitle}>アプリ情報</div>
           <div style={{ fontSize: 13, color: '#b0b0d0', lineHeight: 1.8 }}>
-            <div><span style={{ color: '#6c7086' }}>バージョン：</span>v1.3.1</div>
+            <div><span style={{ color: '#6c7086' }}>バージョン：</span>v1.3.2</div>
             <div><span style={{ color: '#6c7086' }}>作成者：</span>宮崎翼</div>
             <div>
               <span style={{ color: '#6c7086' }}>お問い合わせ：</span>

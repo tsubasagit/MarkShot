@@ -287,6 +287,14 @@ async function startCapture(mode: 'screenshot' | 'gif' = 'screenshot') {
 
 // ---- IPC: Capture ----
 
+const regionDebugLogPath = path.join(app.getPath('userData'), 'markshot-region-debug.log')
+ipcMain.on('region-debug-log', (_event, msg: string, data: Record<string, unknown>) => {
+  try {
+    const line = JSON.stringify({ t: Date.now(), msg, ...data }) + '\n'
+    fs.appendFileSync(regionDebugLogPath, line)
+  } catch (_) {}
+})
+
 ipcMain.on('capture:start', () => {
   startCapture()
 })
@@ -319,16 +327,44 @@ ipcMain.on('capture:overlay-ready', (event) => {
 
 ipcMain.on('capture:screenshot-loaded', (event) => {
   const win = BrowserWindow.fromWebContents(event.sender)
-  if (win && !win.isDestroyed()) {
-    const displayId = (win as any).displayId
+  if (!win || win.isDestroyed()) return
+  const showOverlay = () => {
+    if (win.isDestroyed()) return
+    if (win.isVisible()) return
     win.show()
-    // カーソルがあるディスプレイのオーバーレイにフォーカスを設定
+    win.moveTop()
+    const displayId = (win as any).displayId
     const cursorPoint = screen.getCursorScreenPoint()
     const cursorDisplay = screen.getDisplayNearestPoint(cursorPoint)
-    if (cursorDisplay.id === displayId) {
-      win.focus()
-      win.moveTop()
+    if (cursorDisplay.id === displayId) win.focus()
+  }
+  ;(win as any)._showFallback = setTimeout(showOverlay, 220)
+})
+
+ipcMain.on('capture:overlay-painted', (event) => {
+  const win = BrowserWindow.fromWebContents(event.sender)
+  if (win && !win.isDestroyed()) {
+    const t = (win as any)._showFallback as NodeJS.Timeout | undefined
+    if (t) {
+      clearTimeout(t)
+      ;(win as any)._showFallback = undefined
     }
+    if (win.isVisible()) return
+    win.show()
+    win.moveTop()
+    const displayId = (win as any).displayId
+    const cursorPoint = screen.getCursorScreenPoint()
+    const cursorDisplay = screen.getDisplayNearestPoint(cursorPoint)
+    if (cursorDisplay.id === displayId) win.focus()
+  }
+})
+
+// オーバーレイ上でマウスダウンしたウィンドウを前面に出す（rAF スロットル防止）
+ipcMain.on('capture:overlay-focus', (event) => {
+  const win = BrowserWindow.fromWebContents(event.sender)
+  if (win && !win.isDestroyed()) {
+    win.focus()
+    win.moveTop()
   }
 })
 

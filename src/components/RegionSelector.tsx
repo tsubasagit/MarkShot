@@ -1,4 +1,12 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react'
+import {
+  createInitialState,
+  resetState,
+  onPointerDown as logicPointerDown,
+  onPointerMove as logicPointerMove,
+  onPointerUp as logicPointerUp,
+  type SelectionState,
+} from '@/utils/regionSelectionLogic'
 
 interface Region {
   startX: number
@@ -11,11 +19,29 @@ interface RegionSelectorProps {
   mode?: 'screenshot' | 'gif'
 }
 
-const MIN_SIZE_PX = 20 // ワンクリック誤確定を防ぐため、これ未満は送信しない
+const INPUT_COOLDOWN_MS = 280
+
+function selectionToRegion(s: SelectionState): Region | null {
+  if (!s.isDragging) return null
+  return {
+    startX: s.startPos.x,
+    startY: s.startPos.y,
+    endX: s.currentEnd.x,
+    endY: s.currentEnd.y,
+  }
+}
 
 const RegionSelector: React.FC<RegionSelectorProps> = ({ mode = 'screenshot' }) => {
   const canvasRef = useRef<HTMLCanvasElement>(null)
-  const dragMoveCountRef = useRef(0) // ドラッグ中の mouseMove 回数（0 = クリックのみ）
+  const selectionFrameRef = useRef<HTMLDivElement>(null)
+  const selectionStateRef = useRef<SelectionState>(createInitialState())
+  const inputReadyAtRef = useRef(0)
+  const drawRef = useRef<() => void>(() => {})
+  const drawRetryCountRef = useRef(0)
+  const MAX_DRAW_RETRY = 60
+  const screenshotImageRef = useRef<HTMLImageElement | null>(null)
+  const overlayPaintedSentRef = useRef(false)
+  const successfulDrawsRef = useRef(0)
   const [screenshotImage, setScreenshotImage] = useState<HTMLImageElement | null>(null)
   const [displayInfo, setDisplayInfo] = useState<{
     width: number
@@ -24,18 +50,21 @@ const RegionSelector: React.FC<RegionSelectorProps> = ({ mode = 'screenshot' }) 
   } | null>(null)
   const [isDragging, setIsDragging] = useState(false)
   const [region, setRegion] = useState<Region | null>(null)
-  const [startPos, setStartPos] = useState({ x: 0, y: 0 })
   const [mousePos, setMousePos] = useState<{ x: number; y: number } | null>(null)
+  const forceHideFrameRef = useRef(false)
 
   useEffect(() => {
-    // Register the screenshot data listener FIRST
     const cleanupScreenshot = window.electronAPI?.onScreenshotData((dataUrl, info) => {
-      setScreenshotImage(null)
+      forceHideFrameRef.current = true
       setDisplayInfo(info)
+      selectionStateRef.current = resetState(selectionStateRef.current)
+      inputReadyAtRef.current = Date.now() + INPUT_COOLDOWN_MS
       const img = new Image()
       img.onload = () => {
+        drawRetryCountRef.current = 0
+        overlayPaintedSentRef.current = false
+        successfulDrawsRef.current = 0
         setScreenshotImage(img)
-        // キャンバス描画完了後にウィンドウを表示する（描画前だとクリックが素通りする）
         requestAnimationFrame(() => {
           requestAnimationFrame(() => {
             window.electronAPI?.notifyScreenshotLoaded()
@@ -65,11 +94,23 @@ const RegionSelector: React.FC<RegionSelectorProps> = ({ mode = 'screenshot' }) 
     const canvas = canvasRef.current
     if (!canvas || !screenshotImage) return
 
+    const w = window.innerWidth
+    const h = window.innerHeight
+    if (w <= 0 || h <= 0) {
+      if (drawRetryCountRef.current < MAX_DRAW_RETRY) {
+        drawRetryCountRef.current += 1
+        requestAnimationFrame(() => drawRef.current())
+      }
+      return
+    }
+    drawRetryCountRef.current = 0
+
     const ctx = canvas.getContext('2d')
     if (!ctx) return
 
-    canvas.width = window.innerWidth
-    canvas.height = window.innerHeight
+    canvas.width = w
+    canvas.height = h
+    successfulDrawsRef.current += 1
 
     // Draw the screenshot
     ctx.drawImage(screenshotImage, 0, 0, canvas.width, canvas.height)
@@ -78,12 +119,26 @@ const RegionSelector: React.FC<RegionSelectorProps> = ({ mode = 'screenshot' }) 
     ctx.fillStyle = 'rgba(0, 0, 0, 0.5)'
     ctx.fillRect(0, 0, canvas.width, canvas.height)
 
-    // If region is selected, clear the selected area
-    if (region) {
-      const x = Math.min(region.startX, region.endX)
-      const y = Math.min(region.startY, region.endY)
-      const w = Math.abs(region.endX - region.startX)
-      const h = Math.abs(region.endY - region.startY)
+    // 選択枠は ref の最新値で描画（state の更新遅延でプライマリで枠が消えるのを防ぐ）
+    const sel = selectionStateRef.current
+    const regionToDraw = selectionToRegion(sel) ?? region
+    if (regionToDraw || sel.isDragging) {
+      const x = regionToDraw
+        ? Math.min(regionToDraw.startX, regionToDraw.endX)
+        : sel.startPos.x
+      const y = regionToDraw
+        ? Math.min(regionToDraw.startY, regionToDraw.endY)
+        : sel.startPos.y
+      let w = regionToDraw
+        ? Math.abs(regionToDraw.endX - regionToDraw.startX)
+        : 0
+      let h = regionToDraw
+        ? Math.abs(regionToDraw.endY - regionToDraw.startY)
+        : 0
+      if (sel.isDragging) {
+        w = Math.max(2, w)
+        h = Math.max(2, h)
+      }
 
       if (w > 0 && h > 0) {
         ctx.clearRect(x, y, w, h)
@@ -153,26 +208,61 @@ const RegionSelector: React.FC<RegionSelectorProps> = ({ mode = 'screenshot' }) 
     }
   }, [screenshotImage, region, displayInfo, mousePos])
 
+  drawRef.current = draw
+  screenshotImageRef.current = screenshotImage
+
+  // マウント時から rAF ループを止めない。選択枠は DOM の div でも同期更新（キャンバス描画が抜けても枠は見えるようにする）
   useEffect(() => {
-    draw()
-  }, [draw])
+    let rafId = 0
+    const tick = () => {
+      drawRef.current()
+      const s = selectionStateRef.current
+      const el = selectionFrameRef.current
+      if (forceHideFrameRef.current && el) {
+        el.style.display = 'none'
+        forceHideFrameRef.current = false
+      }
+      if (el) {
+        if (s.isDragging) {
+          const x = Math.min(s.startPos.x, s.currentEnd.x)
+          const y = Math.min(s.startPos.y, s.currentEnd.y)
+          const w = Math.max(2, Math.abs(s.currentEnd.x - s.startPos.x))
+          const h = Math.max(2, Math.abs(s.currentEnd.y - s.startPos.y))
+          el.style.display = 'block'
+          el.style.left = x + 'px'
+          el.style.top = y + 'px'
+          el.style.width = w + 'px'
+          el.style.height = h + 'px'
+        } else {
+          el.style.display = 'none'
+        }
+      }
+      if (screenshotImageRef.current && !overlayPaintedSentRef.current && successfulDrawsRef.current >= 4) {
+        window.electronAPI?.notifyOverlayPainted?.()
+        overlayPaintedSentRef.current = true
+      }
+      rafId = requestAnimationFrame(tick)
+    }
+    rafId = requestAnimationFrame(tick)
+    return () => {
+      if (rafId) cancelAnimationFrame(rafId)
+    }
+  }, [])
 
   const handleMouseDown = (e: React.MouseEvent) => {
-    if (e.button === 2) return // 右クリックは無視
-    dragMoveCountRef.current = 0
-    setIsDragging(true)
-    setStartPos({ x: e.clientX, y: e.clientY })
-    setRegion({
-      startX: e.clientX,
-      startY: e.clientY,
-      endX: e.clientX,
-      endY: e.clientY,
-    })
+    if (e.button === 2) return
+    window.electronAPI?.bringOverlayToFront?.()
+    if (selectionStateRef.current.isDragging) return
+    if (Date.now() < inputReadyAtRef.current) return
+    const pt = { x: e.clientX, y: e.clientY }
+    selectionStateRef.current = logicPointerDown(selectionStateRef.current, pt)
+    setRegion(selectionToRegion(selectionStateRef.current))
+    setIsDragging(selectionStateRef.current.isDragging)
   }
 
-  // 右クリックでキャプチャをキャンセル
   const handleContextMenu = (e: React.MouseEvent) => {
     e.preventDefault()
+    selectionStateRef.current = createInitialState()
     setIsDragging(false)
     setRegion(null)
     window.electronAPI?.cancelCapture()
@@ -180,31 +270,21 @@ const RegionSelector: React.FC<RegionSelectorProps> = ({ mode = 'screenshot' }) 
 
   const handleMouseMove = (e: React.MouseEvent) => {
     setMousePos({ x: e.clientX, y: e.clientY })
-    if (!isDragging) return
-    dragMoveCountRef.current += 1
-    setRegion({
-      startX: startPos.x,
-      startY: startPos.y,
-      endX: e.clientX,
-      endY: e.clientY,
-    })
+    const pt = { x: e.clientX, y: e.clientY }
+    selectionStateRef.current = logicPointerMove(selectionStateRef.current, pt)
+    const nowDragging = selectionStateRef.current.isDragging
+    setRegion(selectionToRegion(selectionStateRef.current))
+    setIsDragging(nowDragging)
   }
 
   const handleMouseUp = () => {
-    if (!isDragging || !region || !screenshotImage) return
-    const moved = dragMoveCountRef.current > 0
+    const result = logicPointerUp(selectionStateRef.current)
+    selectionStateRef.current = resetState(selectionStateRef.current)
+    setRegion(null)
     setIsDragging(false)
 
-    const x = Math.min(region.startX, region.endX)
-    const y = Math.min(region.startY, region.endY)
-    const w = Math.abs(region.endX - region.startX)
-    const h = Math.abs(region.endY - region.startY)
-
-    // クリックのみ（ドラッグなし）または範囲が小さすぎる場合は送信しない
-    if (!moved || w < MIN_SIZE_PX || h < MIN_SIZE_PX) {
-      setRegion(null)
-      return
-    }
+    if (!result.send || !screenshotImage || !('rect' in result)) return
+    const { x, y, w, h } = result.rect
 
     if (mode === 'gif') {
       // GIF mode: send region coordinates (in physical pixels) instead of cropped image
@@ -263,6 +343,22 @@ const RegionSelector: React.FC<RegionSelectorProps> = ({ mode = 'screenshot' }) 
         onMouseMove={handleMouseMove}
         onMouseUp={handleMouseUp}
         onContextMenu={handleContextMenu}
+      />
+      <div
+        ref={selectionFrameRef}
+        aria-hidden
+        style={{
+          position: 'fixed',
+          display: 'none',
+          left: 0,
+          top: 0,
+          width: 0,
+          height: 0,
+          boxSizing: 'border-box',
+          border: '2px dashed #00FFFF',
+          pointerEvents: 'none',
+          zIndex: 10000,
+        }}
       />
       {!isDragging && !region && screenshotImage && (
         <div className="region-hint">
