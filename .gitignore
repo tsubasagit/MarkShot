@@ -3,3 +3,5 @@ dist/
 dist-electron/
 *.local
 .env
+debug-*.log
+release/

@@ -491,10 +491,15 @@ const AnnotationEditor: React.FC<AnnotationEditorProps> = ({
     if (!pos) return
 
     if (activeTool === 'select') {
-      const clickedOnEmpty = stageRef.current?.getIntersection(
-        stageRef.current.getPointerPosition()!
-      )
-      if (!clickedOnEmpty || (clickedOnEmpty as unknown) === stageRef.current) {
+      const stage = stageRef.current
+      const pointerPos = stage?.getPointerPosition()
+      const hit = pointerPos ? stage?.getIntersection(pointerPos) : null
+      const isStageOrLayer =
+        !hit ||
+        hit === stage ||
+        (hit.getClassName?.() === 'Layer')
+      const isAnnotation = hit?.id?.() && annotations.some((a) => a.id === hit.id())
+      if (isStageOrLayer || !isAnnotation) {
         setSelectedId(null)
       }
       return
