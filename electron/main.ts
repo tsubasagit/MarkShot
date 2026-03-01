@@ -244,15 +244,34 @@ async function startCapture(mode: 'screenshot' | 'gif' = 'screenshot') {
     }
 
     const allDisplays = screen.getAllDisplays()
-    const maxWidth = Math.max(...allDisplays.map(d => d.size.width * d.scaleFactor))
-    const maxHeight = Math.max(...allDisplays.map(d => d.size.height * d.scaleFactor))
+    const primaryDisplay = screen.getPrimaryDisplay()
+    const cursorPoint = screen.getCursorScreenPoint()
+    const cursorDisplay = screen.getDisplayNearestPoint(cursorPoint)
+
+    // 3台以上の場合、2台に制限（カーソルのある画面 + もう1台）
+    // desktopCapturer.getSources() が3画面分のサムネイルを返せずに黒くなる問題の回避
+    let targetDisplays: Electron.Display[]
+    if (allDisplays.length <= 2) {
+      targetDisplays = allDisplays
+    } else {
+      targetDisplays = [cursorDisplay]
+      if (cursorDisplay.id !== primaryDisplay.id) {
+        targetDisplays.push(primaryDisplay)
+      } else {
+        const secondary = allDisplays.find(d => d.id !== primaryDisplay.id)
+        if (secondary) targetDisplays.push(secondary)
+      }
+    }
+
+    const maxWidth = Math.max(...targetDisplays.map(d => d.size.width * d.scaleFactor))
+    const maxHeight = Math.max(...targetDisplays.map(d => d.size.height * d.scaleFactor))
     const capturerOpts = { types: ['screen'] as const, thumbnailSize: { width: maxWidth, height: maxHeight } }
     if (process.platform === 'win32') {
       await desktopCapturer.getSources(capturerOpts)
       await new Promise((r) => setTimeout(r, 500))
     }
     const sources = await desktopCapturer.getSources(capturerOpts)
-    allDisplays.forEach(display => {
+    targetDisplays.forEach(display => {
       const matched = sources.find(s => s.display_id === String(display.id))
       const source = matched || sources[0]
       const { width, height } = display.size
@@ -260,11 +279,9 @@ async function startCapture(mode: 'screenshot' | 'gif' = 'screenshot') {
       pendingScreenshots.set(display.id, { dataUrl, width, height, scaleFactor: display.scaleFactor })
     })
 
-    overlayReadyWaitingCount = allDisplays.length
+    overlayReadyWaitingCount = targetDisplays.length
     // カーソルのあるディスプレイを最後に作成（フォーカスが最後の窓に行くため）
-    const cursorPoint = screen.getCursorScreenPoint()
-    const cursorDisplay = screen.getDisplayNearestPoint(cursorPoint)
-    const sortedDisplays = [...allDisplays].sort((a, b) => {
+    const sortedDisplays = [...targetDisplays].sort((a, b) => {
       if (a.id === cursorDisplay.id) return 1
       if (b.id === cursorDisplay.id) return -1
       return 0
