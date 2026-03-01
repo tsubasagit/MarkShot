@@ -715,6 +715,63 @@
                 flex-direction: column;
                 align-items: center;
             }
+
+            .news-section .news-list {
+                gap: 12px;
+            }
+        }
+
+        /* News / お知らせ */
+        .news-section {
+            padding: 40px 0 20px;
+        }
+
+        .news-list {
+            display: flex;
+            flex-direction: column;
+            gap: 16px;
+            max-width: 700px;
+            margin: 0 auto;
+        }
+
+        .news-item {
+            display: flex;
+            align-items: baseline;
+            gap: 16px;
+            padding: 14px 20px;
+            background: rgba(255, 255, 255, 0.03);
+            border: 1px solid rgba(255, 255, 255, 0.06);
+            border-radius: 10px;
+        }
+
+        .news-date {
+            font-size: 0.8rem;
+            color: #6c7086;
+            white-space: nowrap;
+            font-variant-numeric: tabular-nums;
+        }
+
+        .news-tag {
+            font-size: 0.7rem;
+            font-weight: 600;
+            padding: 2px 10px;
+            border-radius: 100px;
+            white-space: nowrap;
+        }
+
+        .news-tag.bugfix {
+            background: rgba(243, 139, 168, 0.15);
+            color: #f38ba8;
+        }
+
+        .news-tag.feature {
+            background: rgba(0, 180, 182, 0.15);
+            color: var(--teal-light);
+        }
+
+        .news-text {
+            font-size: 0.88rem;
+            color: var(--text-secondary);
         }
     </style>
 </head>
@@ -740,7 +797,7 @@
     <!-- HERO -->
     <section class="hero">
         <div class="container">
-            <div class="hero-badge">v1.3.0 リリース</div>
+            <div class="hero-badge">v1.3.4 リリース</div>
             <img src="../img/logo3.png" alt="MarkShot Logo" class="hero-logo" />
             <h1>撮って、書いて、<span class="accent">共有する。</span></h1>
             <p>
@@ -748,7 +805,7 @@
                 MarkShotがすべてをワンストップで実現します。
             </p>
             <div class="hero-actions">
-                <a href="https://github.com/tsubasagit/MarkShot/releases/latest/download/MarkShot.Setup.1.3.0.exe" class="btn-primary" onclick="gtag('event','download_click',{event_category:'download',event_label:this.closest('section').className})">
+                <a href="https://github.com/tsubasagit/MarkShot/releases/latest/download/MarkShot.Setup.1.3.4.exe" class="btn-primary" onclick="gtag('event','download_click',{event_category:'download',event_label:this.closest('section').className})">
                     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"
                         stroke-linejoin="round">
                         <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
@@ -769,6 +826,28 @@
 
             <div class="hero-screenshot">
                 <img src="../img/markshot1.png" alt="MarkShot エディタ画面" />
+            </div>
+        </div>
+    </section>
+
+    <!-- NEWS -->
+    <section class="news-section">
+        <div class="container">
+            <div class="section-header">
+                <div class="section-label">News</div>
+                <h2>お知らせ</h2>
+            </div>
+            <div class="news-list">
+                <div class="news-item">
+                    <span class="news-date">2026-03-02</span>
+                    <span class="news-tag bugfix">修正</span>
+                    <span class="news-text">v1.3.4 — 3台以上のマルチモニター環境でメイン画面が真っ黒になる不具合を修正しました</span>
+                </div>
+                <div class="news-item">
+                    <span class="news-date">2026-02-15</span>
+                    <span class="news-tag feature">機能</span>
+                    <span class="news-text">v1.3.0 — スクリーンショットURL共有機能を追加、プライマリディスプレイの表示を修正</span>
+                </div>
             </div>
         </div>
     </section>
@@ -973,7 +1052,7 @@
         <div class="container">
             <h2>今すぐ<span class="accent">MarkShot</span>を始めよう</h2>
             <p>インストールして、すぐに使い始められます。</p>
-            <a href="https://github.com/tsubasagit/MarkShot/releases/latest/download/MarkShot.Setup.1.3.0.exe" class="btn-primary" onclick="gtag('event','download_click',{event_category:'download',event_label:this.closest('section').className})">
+            <a href="https://github.com/tsubasagit/MarkShot/releases/latest/download/MarkShot.Setup.1.3.4.exe" class="btn-primary" onclick="gtag('event','download_click',{event_category:'download',event_label:this.closest('section').className})">
                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"
                     stroke-linejoin="round" width="20" height="20">
                     <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
@@ -982,7 +1061,7 @@
                 </svg>
                 無料ダウンロード
             </a>
-            <p class="cta-note">Windows 10 / 11 対応 | v1.3.0</p>
+            <p class="cta-note">Windows 10 / 11 対応 | v1.3.4</p>
         </div>
     </section>
 
