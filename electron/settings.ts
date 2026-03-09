@@ -10,6 +10,8 @@ export interface AppSettings {
   googleAccessToken: string
   googleRefreshToken: string
   googleTokenExpiry: number
+  /** スクリーンショット開始のグローバルショートカット（Electron accelerator 形式） */
+  screenshotShortcut: string
 }
 
 let settingsPath = ''
@@ -30,6 +32,7 @@ function getDefaultSettings(): AppSettings {
     googleAccessToken: '',
     googleRefreshToken: '',
     googleTokenExpiry: 0,
+    screenshotShortcut: 'CommandOrControl+Shift+S',
   }
 }
 

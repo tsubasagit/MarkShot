@@ -23,8 +23,12 @@ import {
   generateId,
 } from '../hooks/useAnnotation'
 
+type GifRegion = { x: number; y: number; w: number; h: number; scaleFactor: number }
+
 interface AnnotationEditorProps {
   imageDataUrl: string | null
+  initialGifRegion?: GifRegion | null
+  onGifRegionConsumed?: () => void
 }
 
 const BADGE_COLORS: Record<BadgeKind, { bg: string; fg: string }> = {
@@ -43,6 +47,8 @@ const TOOL_SHORTCUTS: Record<string, ToolType> = {
 
 const AnnotationEditor: React.FC<AnnotationEditorProps> = ({
   imageDataUrl,
+  initialGifRegion = null,
+  onGifRegionConsumed,
 }) => {
   const stageRef = useRef<Konva.Stage>(null)
   const transformerRef = useRef<Konva.Transformer>(null)
@@ -365,8 +371,9 @@ const AnnotationEditor: React.FC<AnnotationEditorProps> = ({
         try {
           gif.finish()
           const bytes = gif.bytes()
+          const bytesArr = bytes instanceof Uint8Array ? bytes : new Uint8Array(bytes)
 
-          const gifBlob = new Blob([new Uint8Array(bytes)], { type: 'image/gif' })
+          const gifBlob = new Blob([bytesArr as BlobPart], { type: 'image/gif' })
           const gifDataUrl = await new Promise<string>((resolve) => {
             const r = new FileReader()
             r.onload = () => resolve(r.result as string)
@@ -376,12 +383,27 @@ const AnnotationEditor: React.FC<AnnotationEditorProps> = ({
           setGifPreviewUrl(gifDataUrl)
           setGifEncoding(false)
 
-          // 1. Save locally
-          const result = await window.electronAPI.saveGif(bytes)
+          if (bytesArr.length < 50) {
+            showStatus('録画されたフレームがありません。少し長く録画してください。', true)
+            return
+          }
+
+          let result: string | null = null
+          try {
+            result = await window.electronAPI.saveGif(Array.from(bytesArr))
+          } catch (_e) {}
           if (!result) {
-            showStatus('GIF save failed locally', true)
+            const blob = new Blob([bytesArr as BlobPart], { type: 'image/gif' })
+            const url = URL.createObjectURL(blob)
+            const a = document.createElement('a')
+            a.href = url
+            a.download = `gif_${new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19)}.gif`
+            a.click()
+            URL.revokeObjectURL(url)
+            showStatus('GIFをダウンロードしました（保存先: ブラウザのダウンロードフォルダ）')
           } else {
-            showStatus(`GIF saved: ${result}`)
+            const fileName = result.replace(/^.*[\\/]/, '')
+            showStatus(`GIFを保存しました: ${fileName}`)
           }
 
           // 2. Upload to Drive (optional)
@@ -433,13 +455,12 @@ const AnnotationEditor: React.FC<AnnotationEditorProps> = ({
     }
   }, [exportImage, image])
 
-  // Listen for GIF region selection from overlay
+  // Start GIF recording when initialGifRegion is passed from App (Placeholder or after toolbar New GIF)
   useEffect(() => {
-    const cleanup = window.electronAPI?.onGifRegionReady((region) => {
-      startGifWithRegion(region)
-    })
-    return cleanup
-  }, [startGifWithRegion])
+    if (!initialGifRegion) return
+    startGifWithRegion(initialGifRegion)
+    onGifRegionConsumed?.()
+  }, [initialGifRegion])
 
   const handleStopGif = () => {
     gifRef.current?.stop()
@@ -496,7 +517,7 @@ const AnnotationEditor: React.FC<AnnotationEditorProps> = ({
       const hit = pointerPos ? stage?.getIntersection(pointerPos) : null
       const isStageOrLayer =
         !hit ||
-        hit === stage ||
+        (hit.getClassName?.() === 'Stage') ||
         (hit.getClassName?.() === 'Layer')
       const isAnnotation = hit?.id?.() && annotations.some((a) => a.id === hit.id())
       if (isStageOrLayer || !isAnnotation) {

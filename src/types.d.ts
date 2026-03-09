@@ -36,7 +36,7 @@ declare global {
       copyImage: (dataUrl: string) => void
 
       // GIF
-      saveGif: (data: Uint8Array) => Promise<string>
+      saveGif: (data: Uint8Array | number[]) => Promise<string>
       startGifCapture: () => void
       sendGifRegion: (region: { x: number; y: number; w: number; h: number; scaleFactor: number }) => void
       onGifRegionReady: (
@@ -73,6 +73,7 @@ declare global {
         gasWebAppUrl: string
         gasFolderId: string
         driveFolderId: string
+        screenshotShortcut: string
       }>
       updateSettings: (updates: Record<string, unknown>) => Promise<boolean>
       browseFolder: () => Promise<string | null>

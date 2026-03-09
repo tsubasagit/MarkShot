@@ -8,6 +8,7 @@ import {
   clipboard,
   dialog,
   desktopCapturer,
+  globalShortcut,
 } from 'electron'
 import path from 'path'
 import fs from 'fs'
@@ -37,6 +38,42 @@ let pendingScreenshots: Map<number, {
   scaleFactor: number
 }> = new Map()
 let overlayReadyWaitingCount = 0
+let screenshotShortcutAccelerator: string | null = null
+
+function normalizeAccelerator(acc: string): string {
+  return acc
+    .replace(/\bCtrl\b/gi, 'Control')
+    .replace(/\bCmd\b/gi, 'Command')
+    .replace(/\bWin\b/gi, 'Super')
+    .trim()
+}
+
+function registerScreenshotShortcut(): void {
+  const raw = (loadSettings().screenshotShortcut || 'CommandOrControl+Shift+S').trim()
+  const acc = raw ? normalizeAccelerator(raw) : 'CommandOrControl+Shift+S'
+  if (!acc) return
+  try {
+    if (screenshotShortcutAccelerator) {
+      globalShortcut.unregister(screenshotShortcutAccelerator)
+      screenshotShortcutAccelerator = null
+    }
+    globalShortcut.register(acc, () => {
+      if (!isCapturing && !isRecording) startCapture('screenshot')
+    })
+    screenshotShortcutAccelerator = acc
+  } catch (e) {
+    console.error('Failed to register screenshot shortcut:', e)
+  }
+}
+
+function unregisterScreenshotShortcut(): void {
+  if (screenshotShortcutAccelerator) {
+    try {
+      globalShortcut.unregister(screenshotShortcutAccelerator)
+    } catch (_) {}
+    screenshotShortcutAccelerator = null
+  }
+}
 
 const DIST = path.join(__dirname, '../dist')
 const PRELOAD = path.join(__dirname, 'preload.js')
@@ -47,12 +84,19 @@ function generateTimestamp(): string {
 }
 
 function getLocalSaveFolder(): string {
-  const settings = loadSettings()
-  const folder = settings.localSavePath
-  if (!fs.existsSync(folder)) {
-    fs.mkdirSync(folder, { recursive: true })
-  }
-  return folder
+  try {
+    const settings = loadSettings()
+    const folder = settings.localSavePath
+    if (folder && typeof folder === 'string') {
+      if (!fs.existsSync(folder)) {
+        fs.mkdirSync(folder, { recursive: true })
+      }
+      return folder
+    }
+  } catch (_) {}
+  const fallback = path.join(app.getPath('userData'), 'MarkShot')
+  if (!fs.existsSync(fallback)) fs.mkdirSync(fallback, { recursive: true })
+  return fallback
 }
 
 function createMainWindow() {
@@ -263,22 +307,37 @@ async function startCapture(mode: 'screenshot' | 'gif' = 'screenshot') {
       }
     }
 
-    const maxWidth = Math.max(...targetDisplays.map(d => d.size.width * d.scaleFactor))
-    const maxHeight = Math.max(...targetDisplays.map(d => d.size.height * d.scaleFactor))
-    const capturerOpts = { types: ['screen'] as const, thumbnailSize: { width: maxWidth, height: maxHeight } }
+    // Windows: プライマリが真っ黒になるのを防ぐため、ディスプレイごとにその解像度で getSources を呼ぶ
     if (process.platform === 'win32') {
-      await desktopCapturer.getSources(capturerOpts)
-      await new Promise((r) => setTimeout(r, 500))
+      await desktopCapturer.getSources({ types: ['screen'], thumbnailSize: { width: 1, height: 1 } })
+      await new Promise((r) => setTimeout(r, 300))
+      for (const display of targetDisplays) {
+        const w = Math.round(display.size.width * display.scaleFactor)
+        const h = Math.round(display.size.height * display.scaleFactor)
+        const opts = { types: ['screen'] as const, thumbnailSize: { width: w, height: h } }
+        const sources = await desktopCapturer.getSources(opts)
+        const matched = sources.find(s => s.display_id === String(display.id)) || sources[0]
+        const dataUrl = matched.thumbnail.toDataURL()
+        pendingScreenshots.set(display.id, {
+          dataUrl,
+          width: display.size.width,
+          height: display.size.height,
+          scaleFactor: display.scaleFactor,
+        })
+        if (targetDisplays.length > 1) await new Promise((r) => setTimeout(r, 80))
+      }
+    } else {
+      const maxWidth = Math.max(...targetDisplays.map(d => d.size.width * d.scaleFactor))
+      const maxHeight = Math.max(...targetDisplays.map(d => d.size.height * d.scaleFactor))
+      const capturerOpts = { types: ['screen'] as const, thumbnailSize: { width: maxWidth, height: maxHeight } }
+      const sources = await desktopCapturer.getSources(capturerOpts)
+      targetDisplays.forEach(display => {
+        const matched = sources.find(s => s.display_id === String(display.id)) || sources[0]
+        const { width, height } = display.size
+        const dataUrl = matched.thumbnail.toDataURL()
+        pendingScreenshots.set(display.id, { dataUrl, width, height, scaleFactor: display.scaleFactor })
+      })
     }
-    const sources = await desktopCapturer.getSources(capturerOpts)
-    targetDisplays.forEach(display => {
-      const matched = sources.find(s => s.display_id === String(display.id))
-      const source = matched || sources[0]
-      const { width, height } = display.size
-      const dataUrl = source.thumbnail.toDataURL()
-      pendingScreenshots.set(display.id, { dataUrl, width, height, scaleFactor: display.scaleFactor })
-    })
-
     overlayReadyWaitingCount = targetDisplays.length
     // カーソルのあるディスプレイを最後に作成（フォーカスが最後の窓に行くため）
     const sortedDisplays = [...targetDisplays].sort((a, b) => {
@@ -699,12 +758,32 @@ ipcMain.handle(
 
 ipcMain.handle(
   'gif:save',
-  async (_event, data: Uint8Array): Promise<string> => {
-    const folder = getLocalSaveFolder()
+  async (_event, data: Uint8Array | number[] | ArrayBuffer | unknown): Promise<string> => {
+    let buffer: Buffer
+    if (data instanceof Uint8Array) {
+      buffer = Buffer.from(data)
+    } else if (data instanceof ArrayBuffer) {
+      buffer = Buffer.from(data)
+    } else if (Array.isArray(data)) {
+      buffer = Buffer.from(new Uint8Array(data))
+    } else if (data && typeof (data as any).length === 'number' && !(data as any).buffer) {
+      buffer = Buffer.from(new Uint8Array(data as ArrayLike<number>))
+    } else {
+      buffer = Buffer.alloc(0)
+    }
+    if (buffer.length === 0) throw new Error('GIF data is empty')
     const fileName = `gif_${generateTimestamp()}.gif`
-    const filePath = path.join(folder, fileName)
-    await fs.promises.writeFile(filePath, Buffer.from(data))
-    return filePath
+    const folder = getLocalSaveFolder()
+    let filePath = path.join(folder, fileName)
+    try {
+      await fs.promises.writeFile(filePath, buffer)
+      return filePath
+    } catch (_err) {
+      const downloadsDir = app.getPath('downloads')
+      filePath = path.join(downloadsDir, fileName)
+      await fs.promises.writeFile(filePath, buffer)
+      return filePath
+    }
   }
 )
 
@@ -739,6 +818,7 @@ ipcMain.handle(
       gasWebAppUrl?: string
       gasFolderId?: string
       driveFolderId?: string
+      screenshotShortcut?: string
     }
   ) => {
     const settings = loadSettings()
@@ -754,7 +834,11 @@ ipcMain.handle(
     if (updates.driveFolderId !== undefined) {
       settings.driveFolderId = updates.driveFolderId
     }
+    if (updates.screenshotShortcut !== undefined) {
+      settings.screenshotShortcut = updates.screenshotShortcut
+    }
     saveSettings(settings)
+    registerScreenshotShortcut()
     return true
   }
 )
@@ -792,10 +876,15 @@ if (!gotTheLock) {
 
   app.whenReady().then(() => {
     createMainWindow()
+    registerScreenshotShortcut()
     if (mainWindow && !mainWindow.isDestroyed()) {
       mainWindow.show()
       mainWindow.focus()
     }
+  })
+
+  app.on('will-quit', () => {
+    unregisterScreenshotShortcut()
   })
 
   app.on('activate', () => {

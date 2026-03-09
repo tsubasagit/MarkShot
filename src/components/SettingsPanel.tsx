@@ -98,6 +98,7 @@ const s: Record<string, React.CSSProperties> = {
 const SettingsPanel: React.FC<SettingsPanelProps> = ({ onClose }) => {
   const [localSavePath, setLocalSavePath] = useState('')
   const [driveFolderId, setDriveFolderId] = useState('')
+  const [screenshotShortcut, setScreenshotShortcut] = useState('')
   const [googleConnected, setGoogleConnected] = useState(false)
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
@@ -116,6 +117,7 @@ const SettingsPanel: React.FC<SettingsPanelProps> = ({ onClose }) => {
       ])
       setLocalSavePath(settings.localSavePath)
       setDriveFolderId(settings.driveFolderId)
+      setScreenshotShortcut(settings.screenshotShortcut ?? 'CommandOrControl+Shift+S')
       setGoogleConnected(connected)
     } catch {}
     setLoading(false)
@@ -137,6 +139,7 @@ const SettingsPanel: React.FC<SettingsPanelProps> = ({ onClose }) => {
       await window.electronAPI.updateSettings({
         localSavePath,
         driveFolderId,
+        screenshotShortcut: screenshotShortcut.trim() || 'CommandOrControl+Shift+S',
       })
       showMessage('設定を保存しました')
     } catch (err: any) {
@@ -176,6 +179,21 @@ const SettingsPanel: React.FC<SettingsPanelProps> = ({ onClose }) => {
           >
             閉じる
           </button>
+        </div>
+
+        {/* Screenshot shortcut */}
+        <div style={s.section}>
+          <div style={s.sectionTitle}>ショートカット</div>
+          <label style={s.label}>スクリーンショット開始</label>
+          <input
+            style={s.input}
+            value={screenshotShortcut}
+            onChange={(e) => setScreenshotShortcut(e.target.value)}
+            placeholder="CommandOrControl+Shift+S"
+          />
+          <div style={s.hint}>
+            アプリ全体で有効なグローバルショートカット。例: Ctrl+Shift+S (Windows) / Command+Shift+S (Mac)。空欄ならデフォルト（Ctrl+Shift+S）を使用。
+          </div>
         </div>
 
         {/* Local save path */}
@@ -270,7 +288,7 @@ const SettingsPanel: React.FC<SettingsPanelProps> = ({ onClose }) => {
         <div style={{ ...s.section, marginTop: 20, marginBottom: 0 }}>
           <div style={s.sectionTitle}>アプリ情報</div>
           <div style={{ fontSize: 13, color: '#b0b0d0', lineHeight: 1.8 }}>
-            <div><span style={{ color: '#6c7086' }}>バージョン：</span>v1.3.4</div>
+            <div><span style={{ color: '#6c7086' }}>バージョン：</span>v1.3.5</div>
             <div><span style={{ color: '#6c7086' }}>作成者：</span>宮崎翼</div>
             <div>
               <span style={{ color: '#6c7086' }}>お問い合わせ：</span>
