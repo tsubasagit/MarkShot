@@ -65,6 +65,46 @@
 
 ---
 
+## 5. GIF：切り取りが出ない／Save で保存されない
+
+### 想定原因
+
+- **切り取り後に録画が始まらない**：Placeholder 表示時は `AnnotationEditor` がマウントされず、`gif:start-with-region` を受け取るコンポーネントがなかった。
+- **保存されない**：IPC で TypedArray が正しく届かない／保存先が無効／空 GIF を保存しようとしている。
+
+### 対応内容（戻さないこと）
+
+- **`App.tsx`**  
+  - `onGifRegionReady` を App で購読。範囲受信時に `setPendingGifRegion(region)` し、`capturedImage` が null のときは `setCapturedImage(DUMMY_IMAGE)` でエディタをマウント。  
+  - エディタに `initialGifRegion` と `onGifRegionConsumed` を渡す。
+- **`AnnotationEditor.tsx`**  
+  - `initialGifRegion` が渡ったら `startGifWithRegion(initialGifRegion)` を実行（Placeholder からでも録画開始）。  
+  - `saveGif(Array.from(bytesArr))` で配列として送信（IPC のシリアライズを安定化）。  
+  - バイト長 50 未満は保存せず「録画されたフレームがありません」と表示。  
+  - IPC が失敗した場合は Blob のダウンロードでフォールバック（「GIFをダウンロードしました」）。
+- **main.ts（gif:save）**  
+  - `Uint8Array` / `number[]` / `ArrayBuffer` / array-like のいずれも Buffer 化して保存。  
+  - 設定の保存先への書き込みに失敗したら `app.getPath('downloads')` に再試行。  
+  - `getLocalSaveFolder()` は try/catch で userData/MarkShot にフォールバック。
+
+---
+
+## 6. GIF新規でプライマリ画面が真っ黒になる（Windows）
+
+### 想定原因
+
+- Windows で `desktopCapturer.getSources()` に複数ディスプレイの最大解像度をまとめて渡すと、プライマリのサムネイルが黒く返ることがある（Chromium/DWM の挙動）。
+
+### 対応内容（戻さないこと）
+
+- **main.ts（startCapture）**  
+  - **Windows のみ**：全ディスプレイで 1 枚の大きい thumbnailSize で取るのをやめ、**ディスプレイごと**にその解像度の `thumbnailSize` で `getSources` を呼ぶ。  
+  - 初回に 1x1 で一度 getSources して 300ms 待ってから、各 display の width/height で getSources し、その display 用の source だけ使って pendingScreenshots にセット。  
+  - 2 台以上のときはディスプレイ間で 80ms ずつ待ってから次の getSources を実行。  
+  - 他 OS は従来どおり 1 回の getSources（max 解像度）のまま。
+
+---
+
 ## 関連ドキュメント
 
 - 起動時間の詳細な分析：`docs/startup-analysis.md`

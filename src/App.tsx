@@ -5,12 +5,18 @@ import RecordingControl from './components/RecordingControl'
 import CountdownOverlay from './components/CountdownOverlay'
 import CaptureBar from './components/CaptureBar'
 
+// 1x1 transparent GIF（GIF のみのフローでエディタをマウントする用）
+const DUMMY_IMAGE = 'data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7'
+
 // Konva を含むエディタは初回起動時に読まない（起動時間短縮）
 const AnnotationEditor = lazy(() => import('./components/AnnotationEditor'))
+
+type GifRegion = { x: number; y: number; w: number; h: number; scaleFactor: number }
 
 const App: React.FC = () => {
   const [hash] = useState(() => window.location.hash)
   const [capturedImage, setCapturedImage] = useState<string | null>(null)
+  const [pendingGifRegion, setPendingGifRegion] = useState<GifRegion | null>(null)
 
   const isCapture = hash.startsWith('#/capture?') || hash === '#/capture'
   const isCaptureGif = hash.startsWith('#/capture-gif?') || hash === '#/capture-gif'
@@ -31,10 +37,16 @@ const App: React.FC = () => {
       setCapturedImage(imageDataUrl)
     })
 
+    const cleanupGifRegion = window.electronAPI?.onGifRegionReady((region: GifRegion) => {
+      setPendingGifRegion(region)
+      setCapturedImage((prev) => (prev ? prev : DUMMY_IMAGE))
+    })
+
     window.electronAPI?.requestEditorImage()
 
     return () => {
       cleanupEditorOpen?.()
+      cleanupGifRegion?.()
     }
   }, [])
 
@@ -73,6 +85,8 @@ const App: React.FC = () => {
         <AnnotationEditor
           key={capturedImage || 'empty'}
           imageDataUrl={capturedImage}
+          initialGifRegion={pendingGifRegion}
+          onGifRegionConsumed={() => setPendingGifRegion(null)}
         />
       </Suspense>
     )

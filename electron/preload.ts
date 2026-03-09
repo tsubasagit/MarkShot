@@ -84,7 +84,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
   },
 
   // GIF
-  saveGif: (data: Uint8Array): Promise<string> => {
+  saveGif: (data: Uint8Array | number[]): Promise<string> => {
     return ipcRenderer.invoke('gif:save', data)
   },
   startGifCapture: () => {
@@ -176,6 +176,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
     gasWebAppUrl: string
     gasFolderId: string
     driveFolderId: string
+    screenshotShortcut: string
   }> => {
     return ipcRenderer.invoke('settings:get')
   },
