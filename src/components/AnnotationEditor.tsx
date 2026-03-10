@@ -310,9 +310,10 @@ const AnnotationEditor: React.FC<AnnotationEditorProps> = ({
       let captureIntervalId: number | null = null
 
       let stopped = false
+      let paused = false
 
       const captureFrame = () => {
-        if (stopped) return
+        if (stopped || paused) return
 
         if (frameCount >= MAX_SECONDS * FPS) {
           stopGif()
@@ -348,6 +349,8 @@ const AnnotationEditor: React.FC<AnnotationEditorProps> = ({
         stopped = true
         if (captureIntervalId !== null) clearInterval(captureIntervalId)
         cleanupStopListener?.()
+        cleanupPauseListener?.()
+        cleanupResumeListener?.()
 
         if (gifTimerRef.current) {
           clearInterval(gifTimerRef.current)
@@ -433,6 +436,21 @@ const AnnotationEditor: React.FC<AnnotationEditorProps> = ({
 
       const cleanupStopListener = window.electronAPI?.onGifStopRecording(() => {
         stopGif()
+      })
+
+      const cleanupPauseListener = window.electronAPI?.onGifPauseRecording(() => {
+        paused = true
+        if (gifTimerRef.current) {
+          clearInterval(gifTimerRef.current)
+          gifTimerRef.current = null
+        }
+      })
+
+      const cleanupResumeListener = window.electronAPI?.onGifResumeRecording(() => {
+        paused = false
+        gifTimerRef.current = window.setInterval(() => {
+          setGifElapsed((prev) => prev + 1)
+        }, 1000)
       })
 
       gifRef.current = { stream, stop: stopGif }

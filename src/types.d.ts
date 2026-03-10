@@ -47,7 +47,11 @@ declare global {
       showRecordingUI: (region: { x: number; y: number; w: number; h: number; scaleFactor: number }) => void
       hideRecordingUI: () => void
       stopRecordingFromControl: () => void
+      pauseRecordingFromControl: () => void
+      resumeRecordingFromControl: () => void
       onGifStopRecording: (callback: () => void) => () => void
+      onGifPauseRecording: (callback: () => void) => () => void
+      onGifResumeRecording: (callback: () => void) => () => void
 
       // GIF Countdown
       showGifCountdown: () => void

@@ -567,7 +567,7 @@ ipcMain.on(
       recordingOverlayWindow = null
     })
 
-    const controlW = 200
+    const controlW = 240
     const controlH = 50
     const cssX = Math.round(region.x / sf)
     const cssY = Math.round(region.y / sf)
@@ -641,6 +641,18 @@ ipcMain.on('gif:stop-from-control', () => {
     recordingControlWindow.close()
   }
   recordingControlWindow = null
+})
+
+ipcMain.on('gif:pause-from-control', () => {
+  if (mainWindow && !mainWindow.isDestroyed()) {
+    mainWindow.webContents.send('gif:pause-recording')
+  }
+})
+
+ipcMain.on('gif:resume-from-control', () => {
+  if (mainWindow && !mainWindow.isDestroyed()) {
+    mainWindow.webContents.send('gif:resume-recording')
+  }
 })
 
 // ---- IPC: GIF Countdown (separate window) ----

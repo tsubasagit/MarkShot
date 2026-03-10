@@ -118,11 +118,31 @@ contextBridge.exposeInMainWorld('electronAPI', {
   stopRecordingFromControl: () => {
     ipcRenderer.send('gif:stop-from-control')
   },
+  pauseRecordingFromControl: () => {
+    ipcRenderer.send('gif:pause-from-control')
+  },
+  resumeRecordingFromControl: () => {
+    ipcRenderer.send('gif:resume-from-control')
+  },
   onGifStopRecording: (callback: () => void) => {
     const handler = () => callback()
     ipcRenderer.on('gif:stop-recording', handler)
     return () => {
       ipcRenderer.removeListener('gif:stop-recording', handler)
+    }
+  },
+  onGifPauseRecording: (callback: () => void) => {
+    const handler = () => callback()
+    ipcRenderer.on('gif:pause-recording', handler)
+    return () => {
+      ipcRenderer.removeListener('gif:pause-recording', handler)
+    }
+  },
+  onGifResumeRecording: (callback: () => void) => {
+    const handler = () => callback()
+    ipcRenderer.on('gif:resume-recording', handler)
+    return () => {
+      ipcRenderer.removeListener('gif:resume-recording', handler)
     }
   },
 
