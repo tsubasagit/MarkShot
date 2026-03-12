@@ -49,7 +49,7 @@
 
 ## インストール
 
-[Releases](https://github.com/tsubasagit/MarkShot/releases) から `MarkShot-Setup-1.1.0.exe` をダウンロードして実行してください。
+[Releases](https://github.com/tsubasagit/MarkShot/releases) から 最新の `MarkShot.Setup.x.x.x.exe` をダウンロードして実行してください。
 
 ## 開発
 
