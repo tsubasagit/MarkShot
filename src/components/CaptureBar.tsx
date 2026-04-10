@@ -5,7 +5,7 @@ export type CaptureMode = 'screenshot' | 'gif'
 interface CaptureBarProps {
   captureMode: CaptureMode
   onCaptureModeChange: (mode: CaptureMode) => void
-  onNewCapture: () => void
+  onNewCapture: (mode?: CaptureMode) => void
   disabled?: boolean
 }
 
@@ -34,7 +34,7 @@ const CaptureBar: React.FC<CaptureBarProps> = ({
       <button
         type="button"
         className="action-btn"
-        onClick={onNewCapture}
+        onClick={() => onNewCapture()}
         disabled={disabled}
         style={{
           width: 38,
@@ -66,7 +66,7 @@ const CaptureBar: React.FC<CaptureBarProps> = ({
         <button
           type="button"
           className="action-btn"
-          onClick={() => onCaptureModeChange('screenshot')}
+          onClick={() => { onCaptureModeChange('screenshot'); onNewCapture('screenshot') }}
           disabled={disabled}
           style={{
             height: 30,
@@ -84,7 +84,7 @@ const CaptureBar: React.FC<CaptureBarProps> = ({
         <button
           type="button"
           className="action-btn"
-          onClick={() => onCaptureModeChange('gif')}
+          onClick={() => { onCaptureModeChange('gif'); onNewCapture('gif') }}
           disabled={disabled}
           style={{
             height: 30,

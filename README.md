@@ -12,7 +12,7 @@
 </p>
 
 <p align="center">
-  <img src="img/markshot1.png" alt="MarkShot エディタ画面" width="700" />
+  <img src="img/markshot1.png" alt="MarkShot ホーム画面" width="700" />
 </p>
 
 ## 機能
@@ -20,7 +20,7 @@
 ### キャプチャ
 - 画面の任意の領域を選択してキャプチャ
 - 動画録画（WebM形式）
-- GIF録画（最大30秒）
+- GIF録画（最大60秒）
 - マルチディスプレイ対応
 
 ### 注釈ツール
@@ -44,7 +44,7 @@
 - トレイダブルクリックで即キャプチャ
 
 <p align="center">
-  <img src="img/markshot2.png" alt="MarkShot 設定画面" width="700" />
+  <img src="img/markshot2.png" alt="MarkShot エディタ画面" width="700" />
 </p>
 
 ## インストール

@@ -96,8 +96,9 @@ const App: React.FC = () => {
 
 function Placeholder() {
   const [captureMode, setCaptureMode] = useState<'screenshot' | 'gif'>('screenshot')
-  const handleNewCapture = () => {
-    if (captureMode === 'gif') {
+  const handleNewCapture = (mode?: 'screenshot' | 'gif') => {
+    const m = mode ?? captureMode
+    if (m === 'gif') {
       window.electronAPI?.startGifCapture?.()
     } else {
       window.electronAPI?.startCapture?.()

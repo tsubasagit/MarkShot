@@ -101,6 +101,12 @@ const AnnotationEditor: React.FC<AnnotationEditorProps> = ({
     stepCounter,
   } = useAnnotation()
 
+  // Refs to always access latest annotation mutation functions (avoids stale closures in textarea handlers)
+  const updateAnnotationRef = useRef(updateAnnotation)
+  updateAnnotationRef.current = updateAnnotation
+  const removeAnnotationRef = useRef(removeAnnotation)
+  removeAnnotationRef.current = removeAnnotation
+
   const showStatus = (text: string, error = false) => {
     setStatusMsg({ text, error })
     setTimeout(() => setStatusMsg(null), 4000)
@@ -223,7 +229,7 @@ const AnnotationEditor: React.FC<AnnotationEditorProps> = ({
   }, [])
 
   // Unified new capture: auto-saves current work, then starts capture based on mode
-  const handleNewCapture = async () => {
+  const handleNewCapture = async (mode?: 'screenshot' | 'gif') => {
     try {
       if (image) {
         const dataUrl = exportImage()
@@ -233,7 +239,8 @@ const AnnotationEditor: React.FC<AnnotationEditorProps> = ({
       }
       setGifPreviewUrl(null)
 
-      if (captureMode === 'gif') {
+      const m = mode ?? captureMode
+      if (m === 'gif') {
         window.electronAPI?.startGifCapture()
       } else {
         window.electronAPI?.startCapture()
@@ -303,7 +310,7 @@ const AnnotationEditor: React.FC<AnnotationEditorProps> = ({
       const gif = GIFEncoder()
 
       const FPS = 10
-      const MAX_SECONDS = 30
+      const MAX_SECONDS = 60
       const frameDelay = 1000 / FPS
       let frameCount = 0
       let globalPalette: number[][] | null = null
@@ -555,8 +562,10 @@ const AnnotationEditor: React.FC<AnnotationEditorProps> = ({
         fontSize,
         color,
       })
-      setEditingTextId(id)
-      // Keep text tool active for consecutive placements (don't reset to select)
+      // Immediately open textarea for editing (use setTimeout to let React render first)
+      setTimeout(() => {
+        openTextEditor(id, pos.x, pos.y, 'テキスト', fontSize, color, true)
+      }, 0)
       return
     }
 
@@ -752,9 +761,9 @@ const AnnotationEditor: React.FC<AnnotationEditorProps> = ({
     }
   }
 
-  // Text editing via textarea overlay
-  const handleTextDblClick = (ann: Annotation & { type: 'text' }) => {
-    setEditingTextId(ann.id)
+  // Text editing via textarea overlay (shared by new creation and double-click edit)
+  const openTextEditor = (annId: string, x: number, y: number, text: string, annFontSize: number, annColor: string, isNew = false) => {
+    setEditingTextId(annId)
     const stage = stageRef.current
     if (!stage) return
 
@@ -762,12 +771,12 @@ const AnnotationEditor: React.FC<AnnotationEditorProps> = ({
     const stageRect = stageContainer.getBoundingClientRect()
 
     const textarea = document.createElement('textarea')
-    textarea.value = ann.text
+    textarea.value = text
     textarea.style.position = 'fixed'
-    textarea.style.left = `${stageRect.left + (ann.x * stageScale + stagePos.x)}px`
-    textarea.style.top = `${stageRect.top + (ann.y * stageScale + stagePos.y)}px`
-    textarea.style.fontSize = `${ann.fontSize * stageScale}px`
-    textarea.style.color = ann.color
+    textarea.style.left = `${stageRect.left + (x * stageScale + stagePos.x)}px`
+    textarea.style.top = `${stageRect.top + (y * stageScale + stagePos.y)}px`
+    textarea.style.fontSize = `${annFontSize * stageScale}px`
+    textarea.style.color = annColor
     textarea.style.border = '2px solid #00FFFF'
     textarea.style.borderRadius = '4px'
     textarea.style.padding = '4px'
@@ -775,7 +784,7 @@ const AnnotationEditor: React.FC<AnnotationEditorProps> = ({
     textarea.style.outline = 'none'
     textarea.style.resize = 'both'
     textarea.style.minWidth = '100px'
-    textarea.style.minHeight = `${ann.fontSize + 8}px`
+    textarea.style.minHeight = `${annFontSize + 8}px`
     textarea.style.fontFamily = 'Segoe UI, Meiryo, sans-serif'
     textarea.style.zIndex = '10000'
     textarea.style.overflow = 'hidden'
@@ -784,10 +793,16 @@ const AnnotationEditor: React.FC<AnnotationEditorProps> = ({
     textarea.focus()
     textarea.select()
 
+    let finished = false
     const finishEditing = () => {
+      if (finished) return
+      finished = true
+      textarea.removeEventListener('blur', finishEditing)
       const newText = textarea.value
       if (newText.trim()) {
-        updateAnnotation(ann.id, { text: newText })
+        updateAnnotationRef.current(annId, { text: newText })
+      } else {
+        removeAnnotationRef.current(annId)
       }
       if (document.body.contains(textarea)) {
         document.body.removeChild(textarea)
@@ -802,12 +817,21 @@ const AnnotationEditor: React.FC<AnnotationEditorProps> = ({
         finishEditing()
       }
       if (e.key === 'Escape') {
+        finished = true
+        textarea.removeEventListener('blur', finishEditing)
+        if (isNew) {
+          removeAnnotationRef.current(annId)
+        }
         if (document.body.contains(textarea)) {
           document.body.removeChild(textarea)
         }
         setEditingTextId(null)
       }
     })
+  }
+
+  const handleTextDblClick = (ann: Annotation & { type: 'text' }) => {
+    openTextEditor(ann.id, ann.x, ann.y, ann.text, ann.fontSize, ann.color)
   }
 
   // Mosaic rendering using real pixelation of source image
@@ -1223,7 +1247,7 @@ const AnnotationEditor: React.FC<AnnotationEditorProps> = ({
           {!isGifRecording ? (
             <button
               className="action-btn"
-              onClick={handleNewCapture}
+              onClick={() => handleNewCapture()}
               disabled={anyRecording}
               style={{
                 width: 38,
@@ -1276,7 +1300,7 @@ const AnnotationEditor: React.FC<AnnotationEditorProps> = ({
           }}>
             <button
               className="action-btn"
-              onClick={() => setCaptureMode('screenshot')}
+              onClick={() => { setCaptureMode('screenshot'); handleNewCapture('screenshot') }}
               disabled={anyRecording}
               style={{
                 height: 30,
@@ -1293,7 +1317,7 @@ const AnnotationEditor: React.FC<AnnotationEditorProps> = ({
             </button>
             <button
               className="action-btn"
-              onClick={() => setCaptureMode('gif')}
+              onClick={() => { setCaptureMode('gif'); handleNewCapture('gif') }}
               disabled={anyRecording}
               style={{
                 height: 30,
