@@ -71,6 +71,9 @@ declare global {
       googleLogout: () => Promise<boolean>
       googleStatus: () => Promise<boolean>
 
+      // External links
+      openExternal: (url: string) => void
+
       // Settings
       getSettings: () => Promise<{
         localSavePath: string

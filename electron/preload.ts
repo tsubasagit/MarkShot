@@ -190,6 +190,11 @@ contextBridge.exposeInMainWorld('electronAPI', {
     return ipcRenderer.invoke('google:status')
   },
 
+  // External links
+  openExternal: (url: string) => {
+    ipcRenderer.send('shell:open-external', url)
+  },
+
   // Settings
   getSettings: (): Promise<{
     localSavePath: string

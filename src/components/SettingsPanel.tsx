@@ -288,21 +288,19 @@ const SettingsPanel: React.FC<SettingsPanelProps> = ({ onClose }) => {
         <div style={{ ...s.section, marginTop: 20, marginBottom: 0 }}>
           <div style={s.sectionTitle}>アプリ情報</div>
           <div style={{ fontSize: 13, color: '#b0b0d0', lineHeight: 1.8 }}>
-            <div><span style={{ color: '#6c7086' }}>バージョン：</span>v1.3.6</div>
+            <div><span style={{ color: '#6c7086' }}>バージョン：</span>v1.4.0</div>
             <div><span style={{ color: '#6c7086' }}>作成者：</span>宮崎翼</div>
             <div>
               <span style={{ color: '#6c7086' }}>お問い合わせ：</span>
               <a
-                href="https://share-na2.hsforms.com/2T1pQ6j2sQzajdd3AIDeWqgcy93d?utm_source=markshot"
-                target="_blank"
-                rel="noopener noreferrer"
+                href="https://apptalenthub.co.jp"
                 style={{ color: '#8ab4c8', textDecoration: 'underline', cursor: 'pointer' }}
                 onClick={(e) => {
                   e.preventDefault()
-                  window.open('https://share-na2.hsforms.com/2T1pQ6j2sQzajdd3AIDeWqgcy93d?utm_source=markshot', '_blank')
+                  window.electronAPI?.openExternal('https://apptalenthub.co.jp')
                 }}
               >
-                お問い合わせフォーム
+                AppTalentHub
               </a>
             </div>
           </div>

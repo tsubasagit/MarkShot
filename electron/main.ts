@@ -9,6 +9,7 @@ import {
   dialog,
   desktopCapturer,
   globalShortcut,
+  shell,
 } from 'electron'
 import path from 'path'
 import fs from 'fs'
@@ -854,6 +855,12 @@ ipcMain.handle(
     return true
   }
 )
+
+ipcMain.on('shell:open-external', (_event, url: string) => {
+  if (typeof url === 'string' && (url.startsWith('https://') || url.startsWith('http://'))) {
+    shell.openExternal(url)
+  }
+})
 
 ipcMain.handle('settings:browse-folder', async () => {
   const result = await dialog.showOpenDialog({
