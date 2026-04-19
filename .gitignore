@@ -1,8 +1,12 @@
 node_modules/
 dist/
-dist-electron/
 *.local
 .env
 debug-*.log
 release/
 benchmark-results/
+
+# Tauri
+src-tauri/target/
+src-tauri/gen/
+src-tauri/Cargo.lock

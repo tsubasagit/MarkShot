@@ -1,67 +1,38 @@
-import { defineConfig, loadEnv } from 'vite'
+import { defineConfig } from 'vite'
 import react from '@vitejs/plugin-react'
-import electron from 'vite-plugin-electron'
-import electronRenderer from 'vite-plugin-electron-renderer'
 import path from 'path'
 
-export default defineConfig(({ command, mode }) => {
-  const env = loadEnv(mode, process.cwd(), '')
-  const isBuild = command === 'build'
+const host = process.env.TAURI_DEV_HOST
 
-  return {
-    plugins: [
-      react(),
-      electron([
-        {
-          entry: 'electron/main.ts',
-          onstart(args) {
-            args.startup()
-          },
-          vite: {
-            define: {
-              'process.env.GOOGLE_CLIENT_ID': JSON.stringify(env.GOOGLE_CLIENT_ID || ''),
-              'process.env.GOOGLE_CLIENT_SECRET': JSON.stringify(env.GOOGLE_CLIENT_SECRET || ''),
-            },
-            build: {
-              outDir: 'dist-electron',
-              rollupOptions: {
-                external: ['electron'],
-              },
-              watch: isBuild ? null : {
-                exclude: ['dist-electron/**'],
-              },
-            },
-          },
-        },
-        {
-          entry: 'electron/preload.ts',
-          onstart(args) {
-            args.reload()
-          },
-          vite: {
-            build: {
-              outDir: 'dist-electron',
-              rollupOptions: {
-                external: ['electron'],
-              },
-              watch: isBuild ? null : {
-                exclude: ['dist-electron/**'],
-              },
-            },
-          },
-        },
-      ]),
-      electronRenderer(),
-    ],
-    resolve: {
-      alias: {
-        '@': path.resolve(__dirname, './src'),
-      },
+export default defineConfig(async () => ({
+  plugins: [react()],
+  resolve: {
+    alias: {
+      '@': path.resolve(__dirname, './src'),
     },
-    server: {
-      watch: {
-        ignored: ['**/dist-electron/**'],
-      },
+  },
+  // Tauri expects a fixed port, fail if not available
+  clearScreen: false,
+  server: {
+    port: 5173,
+    strictPort: true,
+    host: host || false,
+    hmr: host
+      ? {
+          protocol: 'ws',
+          host,
+          port: 5174,
+        }
+      : undefined,
+    watch: {
+      // tell vite to ignore watching `src-tauri`
+      ignored: ['**/src-tauri/**'],
     },
-  }
-})
+  },
+  envPrefix: ['VITE_', 'TAURI_ENV_*'],
+  build: {
+    target: process.env.TAURI_ENV_PLATFORM === 'windows' ? 'chrome105' : 'safari13',
+    minify: !process.env.TAURI_ENV_DEBUG ? 'esbuild' : false,
+    sourcemap: !!process.env.TAURI_ENV_DEBUG,
+  },
+}))
