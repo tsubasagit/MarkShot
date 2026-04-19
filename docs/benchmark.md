@@ -69,13 +69,31 @@ powershell -ExecutionPolicy Bypass -File .\scripts\compare.ps1
 
 ## 計測ログ
 
-### Markshot1 ベースライン（v1.3.7, Electron 28）
+### Markshot1 ベースライン（v1.4.0, Electron 28）
 
-**計測予定** — 初回は Markshot1 のベースラインを記録すること。ユーザー観測では起動直後 ~100MB。
+計測機: Surface Laptop 7 / ARM64 / Windows 11 Home / 16GB
+2回計測・2回目の値を採用（キャッシュ温まり後の安定値）
 
 | 日付 | startupMs | processCount | workingSetMB | privateMemoryMB | installSizeMB |
 |---|---|---|---|---|---|
-| TBD | | | | | |
+| 2026-04-20 | 418 | 4 | 290.6 | 180.9 | 259.2 |
+
+**所感:**
+- 起動は速い（418ms）— Electron アプリとしては優秀
+- **Working Set 合計 ~290MB** — Task Manager の「Memory」欄で見える値より大きい。Task Manager は private working set のみを表示するため（~180MB）、ユーザーが「100MB」と認識していた値は**メインプロセス単体の private working set** と推定
+- **プロセス数 4** — main + renderer + GPU + utility（典型的な Electron 構成）
+- **インストールサイズ 259MB** — Chromium ランタイム同梱のため巨大
+
+**Markshot2 削減目標:**
+
+| 指標 | Markshot1 | Markshot2 目標 | 削減率 |
+|---|---|---|---|
+| workingSetMB | 290 | 60 | -79% |
+| privateMemoryMB | 181 | 30 | -83% |
+| processCount | 4 | 1〜2 | -50〜75% |
+| installSizeMB | 259 | 15 | -94% |
+
+いずれも Snipping Tool 並みが到達目標。
 
 ### Markshot2（Tauri + WebView2）
 

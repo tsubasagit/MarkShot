@@ -27,15 +27,22 @@ Get-Process -Name $ProcessName -ErrorAction SilentlyContinue | Stop-Process -For
 Start-Sleep -Milliseconds 800
 
 # 起動時間計測（メインウィンドウ表示まで）
+# Electron は launcher プロセスが子プロセスを spawn 後に自身が exit するため
+# Start-Process の返り値 $proc を追跡するのではなく、Get-Process をポーリングする
 $sw = [System.Diagnostics.Stopwatch]::StartNew()
-$proc = Start-Process -FilePath $ExePath -PassThru
+Start-Process -FilePath $ExePath | Out-Null
+$mainWindowFound = $false
 while ($sw.Elapsed.TotalSeconds -lt $StartupTimeoutSec) {
     Start-Sleep -Milliseconds 100
-    try { $proc.Refresh() } catch { }
-    if ($proc.MainWindowHandle -ne 0) { break }
+    $running = @(Get-Process -Name $ProcessName -ErrorAction SilentlyContinue |
+                 Where-Object { $_.MainWindowHandle -ne 0 })
+    if ($running.Count -gt 0) {
+        $mainWindowFound = $true
+        break
+    }
 }
 $startupMs = $sw.ElapsedMilliseconds
-if ($proc.MainWindowHandle -eq 0) {
+if (-not $mainWindowFound) {
     Write-Warning "メインウィンドウが ${StartupTimeoutSec}s 以内に表示されませんでした"
 }
 
@@ -43,8 +50,10 @@ if ($proc.MainWindowHandle -eq 0) {
 Start-Sleep -Seconds $StabilizeSec
 
 # メモリ計測（同名プロセスを全て合算。Electron は子プロセス多数）
-$procs = Get-Process -Name $ProcessName -ErrorAction SilentlyContinue
-if (-not $procs) {
+# 一時変数経由でないと、@(Get-Process ...) を直接代入したとき 0 件扱いになる PowerShell 5 のバグ回避
+$rawProcs = Get-Process -Name $ProcessName -ErrorAction SilentlyContinue
+$procs = @($rawProcs)
+if ($procs.Count -eq 0) {
     Write-Error "プロセス '$ProcessName' が見つかりません"
     exit 1
 }
@@ -78,7 +87,10 @@ $result = [ordered]@{
 }
 
 # 結果保存
-$outDir = Join-Path $PSScriptRoot "..\benchmark-results"
+$scriptDir = $PSScriptRoot
+if (-not $scriptDir) { $scriptDir = Split-Path -Parent $PSCommandPath -ErrorAction SilentlyContinue }
+if (-not $scriptDir) { $scriptDir = (Get-Location).Path }
+$outDir = Join-Path $scriptDir "..\benchmark-results"
 if (-not (Test-Path $outDir)) { New-Item -ItemType Directory -Path $outDir | Out-Null }
 $stamp = Get-Date -Format "yyyyMMdd_HHmmss"
 $outFile = Join-Path $outDir "$Label-$stamp.json"
