@@ -3,6 +3,7 @@ dist/
 *.local
 .env
 debug-*.log
+dev-output.log
 release/
 benchmark-results/
 

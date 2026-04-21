@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react'
 import { invoke } from '@tauri-apps/api/core'
+import { listen, type UnlistenFn } from '@tauri-apps/api/event'
 import RegionSelector from './components/RegionSelector'
 import RecordingOverlay from './components/RecordingOverlay'
 import RecordingControl from './components/RecordingControl'
@@ -59,6 +60,26 @@ function Placeholder() {
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
+  useEffect(() => {
+    let unlistenComplete: UnlistenFn | null = null
+    let unlistenCancelled: UnlistenFn | null = null
+    const setup = async () => {
+      unlistenComplete = await listen<string>('capture:complete', (e) => {
+        setCaptured(e.payload)
+        setBusy(false)
+        setError(null)
+      })
+      unlistenCancelled = await listen('capture:cancelled', () => {
+        setBusy(false)
+      })
+    }
+    setup()
+    return () => {
+      unlistenComplete?.()
+      unlistenCancelled?.()
+    }
+  }, [])
+
   const handleNewCapture = async (mode?: 'screenshot' | 'gif') => {
     const m = mode ?? captureMode
     if (m === 'gif') {
@@ -68,11 +89,9 @@ function Placeholder() {
     setBusy(true)
     setError(null)
     try {
-      const dataUrl = await invoke<string>('capture_primary_screen')
-      setCaptured(dataUrl)
+      await invoke('start_region_capture')
     } catch (e) {
       setError(String(e))
-    } finally {
       setBusy(false)
     }
   }
@@ -123,7 +142,7 @@ function Placeholder() {
             style={{ maxWidth: '100%', maxHeight: '100%', border: '1px solid #2a2a4a', borderRadius: 4 }}
           />
           <div style={{ fontSize: 11, color: '#6c7086' }}>
-            Tauri invoke 疎通確認用プレビュー（Phase B.1）
+            クリップボードに PNG コピー済み（Ctrl+V で貼り付け可）
           </div>
         </div>
       ) : (
@@ -135,10 +154,11 @@ function Placeholder() {
           </svg>
           <h2>MarkShot</h2>
           <p>
-            <strong>New</strong> ボタンでキャプチャ開始<br />
-            （Phase B.1: プライマリ画面全体を取得）
+            <strong>New</strong> ボタンで範囲選択開始<br />
+            ドラッグで範囲指定 → クリップボードに PNG コピー<br />
+            Esc / 右クリックでキャンセル
           </p>
-          {busy && <p style={{ color: '#00FFFF' }}>キャプチャ中…</p>}
+          {busy && <p style={{ color: '#00FFFF' }}>オーバーレイ準備中…</p>}
           {error && <p style={{ color: '#ef4444', fontSize: 12 }}>{error}</p>}
         </div>
       )}

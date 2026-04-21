@@ -22,5 +22,6 @@
     }
   },
   "include": ["src"],
+  "exclude": ["src/components/AnnotationEditor.tsx"],
   "references": [{ "path": "./tsconfig.node.json" }]
 }

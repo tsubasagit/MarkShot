@@ -1,4 +1,6 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react'
+import { invoke } from '@tauri-apps/api/core'
+import { listen, type UnlistenFn } from '@tauri-apps/api/event'
 import {
   createInitialState,
   resetState,
@@ -7,6 +9,11 @@ import {
   onPointerUp as logicPointerUp,
   type SelectionState,
 } from '@/utils/regionSelectionLogic'
+
+type ScreenshotEvent = {
+  dataUrl: string
+  info: { width: number; height: number; scaleFactor: number }
+}
 
 interface Region {
   startX: number
@@ -54,38 +61,47 @@ const RegionSelector: React.FC<RegionSelectorProps> = ({ mode = 'screenshot' }) 
   const forceHideFrameRef = useRef(false)
 
   useEffect(() => {
-    const cleanupScreenshot = window.electronAPI?.onScreenshotData((dataUrl, info) => {
-      forceHideFrameRef.current = true
-      setDisplayInfo(info)
-      selectionStateRef.current = resetState(selectionStateRef.current)
-      inputReadyAtRef.current = Date.now() + INPUT_COOLDOWN_MS
-      const img = new Image()
-      img.onload = () => {
-        drawRetryCountRef.current = 0
-        overlayPaintedSentRef.current = false
-        successfulDrawsRef.current = 0
-        setScreenshotImage(img)
-        requestAnimationFrame(() => {
-          requestAnimationFrame(() => {
-            window.electronAPI?.notifyScreenshotLoaded()
-          })
-        })
-      }
-      img.src = dataUrl
-    })
+    let unlistenScreenshot: UnlistenFn | null = null
+    let disposed = false
 
-    // THEN tell main process we're ready to receive
-    window.electronAPI?.notifyOverlayReady()
+    const setup = async () => {
+      unlistenScreenshot = await listen<ScreenshotEvent>('overlay:screenshot', (event) => {
+        if (disposed) return
+        const { dataUrl, info } = event.payload
+        forceHideFrameRef.current = true
+        setDisplayInfo(info)
+        selectionStateRef.current = resetState(selectionStateRef.current)
+        inputReadyAtRef.current = Date.now() + INPUT_COOLDOWN_MS
+        const img = new Image()
+        img.onload = () => {
+          drawRetryCountRef.current = 0
+          overlayPaintedSentRef.current = false
+          successfulDrawsRef.current = 0
+          setScreenshotImage(img)
+          requestAnimationFrame(() => {
+            requestAnimationFrame(() => {
+              invoke('overlay_screenshot_loaded').catch(() => {})
+            })
+          })
+        }
+        img.src = dataUrl
+      })
+
+      // THEN tell main process we're ready to receive
+      invoke('overlay_ready').catch((e) => console.error('overlay_ready failed', e))
+    }
+    setup()
 
     const handleKeyDown = (e: KeyboardEvent) => {
       if (e.key === 'Escape') {
-        window.electronAPI?.cancelCapture()
+        invoke('overlay_cancel').catch(() => {})
       }
     }
     window.addEventListener('keydown', handleKeyDown)
     return () => {
+      disposed = true
       window.removeEventListener('keydown', handleKeyDown)
-      cleanupScreenshot?.()
+      unlistenScreenshot?.()
     }
   }, [])
 
@@ -238,7 +254,7 @@ const RegionSelector: React.FC<RegionSelectorProps> = ({ mode = 'screenshot' }) 
         }
       }
       if (screenshotImageRef.current && !overlayPaintedSentRef.current && successfulDrawsRef.current >= 4) {
-        window.electronAPI?.notifyOverlayPainted?.()
+        invoke('overlay_painted').catch(() => {})
         overlayPaintedSentRef.current = true
       }
       rafId = requestAnimationFrame(tick)
@@ -251,7 +267,7 @@ const RegionSelector: React.FC<RegionSelectorProps> = ({ mode = 'screenshot' }) 
 
   const handleMouseDown = (e: React.MouseEvent) => {
     if (e.button === 2) return
-    window.electronAPI?.bringOverlayToFront?.()
+    invoke('overlay_bring_to_front').catch(() => {})
     if (selectionStateRef.current.isDragging) return
     if (Date.now() < inputReadyAtRef.current) return
     const pt = { x: e.clientX, y: e.clientY }
@@ -265,7 +281,7 @@ const RegionSelector: React.FC<RegionSelectorProps> = ({ mode = 'screenshot' }) 
     selectionStateRef.current = createInitialState()
     setIsDragging(false)
     setRegion(null)
-    window.electronAPI?.cancelCapture()
+    invoke('overlay_cancel').catch(() => {})
   }
 
   const handleMouseMove = (e: React.MouseEvent) => {
@@ -287,15 +303,8 @@ const RegionSelector: React.FC<RegionSelectorProps> = ({ mode = 'screenshot' }) 
     const { x, y, w, h } = result.rect
 
     if (mode === 'gif') {
-      // GIF mode: send region coordinates (in physical pixels) instead of cropped image
-      const scaleFactor = displayInfo?.scaleFactor || 1
-      window.electronAPI?.sendGifRegion({
-        x: Math.round(x * scaleFactor),
-        y: Math.round(y * scaleFactor),
-        w: Math.round(w * scaleFactor),
-        h: Math.round(h * scaleFactor),
-        scaleFactor,
-      })
+      // GIF mode is deferred to Phase 2. Cancel overlay on selection.
+      invoke('overlay_cancel').catch(() => {})
       return
     }
 
@@ -321,8 +330,9 @@ const RegionSelector: React.FC<RegionSelectorProps> = ({ mode = 'screenshot' }) 
       )
 
       const croppedDataUrl = cropCanvas.toDataURL('image/png')
-      window.electronAPI?.copyImage(croppedDataUrl)
-      window.electronAPI?.sendRegionSelected(croppedDataUrl)
+      invoke('overlay_region_selected', { dataUrl: croppedDataUrl }).catch((err) => {
+        console.error('overlay_region_selected failed', err)
+      })
     }
   }
 
