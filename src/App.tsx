@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react'
+import { invoke } from '@tauri-apps/api/core'
 import RegionSelector from './components/RegionSelector'
 import RecordingOverlay from './components/RecordingOverlay'
 import RecordingControl from './components/RecordingControl'
@@ -54,14 +55,28 @@ const App: React.FC = () => {
 
 function Placeholder() {
   const [captureMode, setCaptureMode] = useState<'screenshot' | 'gif'>('screenshot')
-  const handleNewCapture = (mode?: 'screenshot' | 'gif') => {
+  const [captured, setCaptured] = useState<string | null>(null)
+  const [busy, setBusy] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+
+  const handleNewCapture = async (mode?: 'screenshot' | 'gif') => {
     const m = mode ?? captureMode
     if (m === 'gif') {
-      window.electronAPI?.startGifCapture?.()
-    } else {
-      window.electronAPI?.startCapture?.()
+      setError('GIF録画は Phase 2 で復活予定です')
+      return
+    }
+    setBusy(true)
+    setError(null)
+    try {
+      const dataUrl = await invoke<string>('capture_primary_screen')
+      setCaptured(dataUrl)
+    } catch (e) {
+      setError(String(e))
+    } finally {
+      setBusy(false)
     }
   }
+
   return (
     <div
       style={{
@@ -86,21 +101,47 @@ function Placeholder() {
           captureMode={captureMode}
           onCaptureModeChange={setCaptureMode}
           onNewCapture={handleNewCapture}
-          disabled={false}
+          disabled={busy}
         />
       </div>
-      <div className="empty-state" style={{ flex: 1 }}>
-        <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="#4a4a6a" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
-          <rect x="3" y="3" width="18" height="18" rx="2" />
-          <circle cx="8.5" cy="8.5" r="1.5" />
-          <polyline points="21 15 16 10 5 21" />
-        </svg>
-        <h2>MarkShot</h2>
-        <p>
-          <strong>New</strong> ボタンでキャプチャ開始<br />
-          GIFモードに切り替えてGIF録画
-        </p>
-      </div>
+      {captured ? (
+        <div
+          style={{
+            flex: 1,
+            width: '100%',
+            padding: 12,
+            display: 'flex',
+            flexDirection: 'column',
+            alignItems: 'center',
+            gap: 8,
+            overflow: 'auto',
+          }}
+        >
+          <img
+            src={captured}
+            alt="captured"
+            style={{ maxWidth: '100%', maxHeight: '100%', border: '1px solid #2a2a4a', borderRadius: 4 }}
+          />
+          <div style={{ fontSize: 11, color: '#6c7086' }}>
+            Tauri invoke 疎通確認用プレビュー（Phase B.1）
+          </div>
+        </div>
+      ) : (
+        <div className="empty-state" style={{ flex: 1 }}>
+          <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="#4a4a6a" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+            <rect x="3" y="3" width="18" height="18" rx="2" />
+            <circle cx="8.5" cy="8.5" r="1.5" />
+            <polyline points="21 15 16 10 5 21" />
+          </svg>
+          <h2>MarkShot</h2>
+          <p>
+            <strong>New</strong> ボタンでキャプチャ開始<br />
+            （Phase B.1: プライマリ画面全体を取得）
+          </p>
+          {busy && <p style={{ color: '#00FFFF' }}>キャプチャ中…</p>}
+          {error && <p style={{ color: '#ef4444', fontSize: 12 }}>{error}</p>}
+        </div>
+      )}
     </div>
   )
 }
