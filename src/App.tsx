@@ -1,22 +1,14 @@
-import React, { useState, useEffect, Suspense, lazy } from 'react'
+import React, { useState, useEffect } from 'react'
 import RegionSelector from './components/RegionSelector'
 import RecordingOverlay from './components/RecordingOverlay'
 import RecordingControl from './components/RecordingControl'
 import CountdownOverlay from './components/CountdownOverlay'
 import CaptureBar from './components/CaptureBar'
 
-// 1x1 transparent GIF（GIF のみのフローでエディタをマウントする用）
-const DUMMY_IMAGE = 'data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7'
-
-// Konva を含むエディタは初回起動時に読まない（起動時間短縮）
-const AnnotationEditor = lazy(() => import('./components/AnnotationEditor'))
-
 type GifRegion = { x: number; y: number; w: number; h: number; scaleFactor: number }
 
 const App: React.FC = () => {
   const [hash] = useState(() => window.location.hash)
-  const [capturedImage, setCapturedImage] = useState<string | null>(null)
-  const [pendingGifRegion, setPendingGifRegion] = useState<GifRegion | null>(null)
 
   const isCapture = hash.startsWith('#/capture?') || hash === '#/capture'
   const isCaptureGif = hash.startsWith('#/capture-gif?') || hash === '#/capture-gif'
@@ -26,29 +18,8 @@ const App: React.FC = () => {
   const isOverlay = isCapture || isCaptureGif || isRecordingOverlay || isRecordingControl || isCountdown
 
   useEffect(() => {
-    if (isOverlay) {
-      document.body.className = 'capture-mode'
-      return
-    }
-
-    document.body.className = 'editor-mode'
-
-    const cleanupEditorOpen = window.electronAPI?.onEditorOpen((imageDataUrl: string) => {
-      setCapturedImage(imageDataUrl)
-    })
-
-    const cleanupGifRegion = window.electronAPI?.onGifRegionReady((region: GifRegion) => {
-      setPendingGifRegion(region)
-      setCapturedImage((prev) => (prev ? prev : DUMMY_IMAGE))
-    })
-
-    window.electronAPI?.requestEditorImage()
-
-    return () => {
-      cleanupEditorOpen?.()
-      cleanupGifRegion?.()
-    }
-  }, [])
+    document.body.className = isOverlay ? 'capture-mode' : 'editor-mode'
+  }, [isOverlay])
 
   if (isCapture) {
     return <RegionSelector />
@@ -60,7 +31,7 @@ const App: React.FC = () => {
 
   if (isRecordingOverlay) {
     const parts = hash.replace('#/recording-overlay/', '').split('/')
-    const region = {
+    const region: GifRegion = {
       x: Number(parts[0]),
       y: Number(parts[1]),
       w: Number(parts[2]),
@@ -78,19 +49,6 @@ const App: React.FC = () => {
     return <CountdownOverlay />
   }
 
-  // 画像があるときだけ Konva エディタを読み込む（起動直後は軽いプレースホルダー）
-  if (capturedImage) {
-    return (
-      <Suspense fallback={<Placeholder />}>
-        <AnnotationEditor
-          key={capturedImage || 'empty'}
-          imageDataUrl={capturedImage}
-          initialGifRegion={pendingGifRegion}
-          onGifRegionConsumed={() => setPendingGifRegion(null)}
-        />
-      </Suspense>
-    )
-  }
   return <Placeholder />
 }
 
