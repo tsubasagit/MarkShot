@@ -1,9 +1,10 @@
 use base64::{engine::general_purpose::STANDARD, Engine as _};
-use screenshots::image::{self, DynamicImage, ImageFormat};
+use image::{DynamicImage, ImageFormat};
 use std::io::Cursor;
 use std::sync::Mutex;
 use tauri::{AppHandle, Emitter, Manager, State, WebviewUrl, WebviewWindowBuilder};
 use tauri_plugin_clipboard_manager::ClipboardExt;
+use xcap::Monitor;
 
 #[derive(serde::Serialize, Clone)]
 #[serde(rename_all = "camelCase")]
@@ -25,9 +26,13 @@ struct AppState {
 }
 
 fn capture_primary(scale_factor: f64) -> Result<ScreenshotPayload, String> {
-    let screens = screenshots::Screen::all().map_err(|e| e.to_string())?;
-    let screen = screens.first().ok_or_else(|| "no screen found".to_string())?;
-    let rgba = screen.capture().map_err(|e| e.to_string())?;
+    let monitors = Monitor::all().map_err(|e| e.to_string())?;
+    let monitor = monitors
+        .iter()
+        .find(|m| m.is_primary().unwrap_or(false))
+        .or_else(|| monitors.first())
+        .ok_or_else(|| "no monitor found".to_string())?;
+    let rgba = monitor.capture_image().map_err(|e| e.to_string())?;
     let width = rgba.width();
     let height = rgba.height();
     let dyn_img = DynamicImage::ImageRgba8(rgba);
@@ -70,71 +75,100 @@ fn capture_primary_screen(app: AppHandle) -> Result<String, String> {
 
 #[tauri::command]
 fn start_region_capture(app: AppHandle, state: State<'_, AppState>) -> Result<(), String> {
+    eprintln!("[capture] start_region_capture invoked");
     let main = app.get_webview_window("main").ok_or("no main window")?;
     let _ = main.hide();
+    eprintln!("[capture] main hidden");
     std::thread::sleep(std::time::Duration::from_millis(180));
 
-    let monitor = main
-        .primary_monitor()
-        .map_err(|e| e.to_string())?
-        .ok_or_else(|| "no primary monitor".to_string())?;
-    let monitor_size = monitor.size();
-    let scale_factor = monitor.scale_factor();
-    let logical_w = monitor_size.width as f64 / scale_factor;
-    let logical_h = monitor_size.height as f64 / scale_factor;
+    let run = || -> Result<(), String> {
+        let monitor = main
+            .primary_monitor()
+            .map_err(|e| format!("primary_monitor err: {e}"))?
+            .ok_or_else(|| "no primary monitor".to_string())?;
+        let monitor_size = monitor.size();
+        let scale_factor = monitor.scale_factor();
+        let logical_w = monitor_size.width as f64 / scale_factor;
+        let logical_h = monitor_size.height as f64 / scale_factor;
+        eprintln!(
+            "[capture] monitor physical={}x{} scale={} logical={}x{}",
+            monitor_size.width, monitor_size.height, scale_factor, logical_w, logical_h
+        );
 
-    let payload = match capture_primary(scale_factor) {
-        Ok(p) => p,
-        Err(e) => {
-            let _ = main.show();
-            return Err(e);
+        let payload = capture_primary(scale_factor)
+            .map_err(|e| format!("capture_primary err: {e}"))?;
+        eprintln!(
+            "[capture] screenshot captured data_url_len={} info={}x{}",
+            payload.data_url.len(),
+            payload.info.width,
+            payload.info.height
+        );
+
+        {
+            let mut guard = state.pending_screenshot.lock().map_err(|e| e.to_string())?;
+            *guard = Some(payload);
         }
+
+        if let Some(existing) = app.get_webview_window("overlay") {
+            eprintln!("[capture] closing stale overlay window");
+            let _ = existing.close();
+        }
+
+        eprintln!("[capture] building overlay webview window");
+        let overlay = WebviewWindowBuilder::new(
+            &app,
+            "overlay",
+            WebviewUrl::App("index.html?overlay=capture".into()),
+        )
+        .title("MarkShot Overlay")
+        .decorations(false)
+        .always_on_top(true)
+        .skip_taskbar(true)
+        .resizable(false)
+        .maximizable(false)
+        .minimizable(false)
+        .shadow(false)
+        .position(0.0, 0.0)
+        .inner_size(logical_w, logical_h)
+        .build()
+        .map_err(|e| format!("overlay build err: {e}"))?;
+
+        eprintln!("[capture] overlay built label={}", overlay.label());
+        let _ = overlay.show();
+        let _ = overlay.set_focus();
+        eprintln!("[capture] overlay show/focus called");
+
+        Ok(())
     };
 
-    {
-        let mut guard = state.pending_screenshot.lock().map_err(|e| e.to_string())?;
-        *guard = Some(payload);
+    match run() {
+        Ok(()) => Ok(()),
+        Err(e) => {
+            eprintln!("[capture] ERROR: {e} — restoring main window");
+            let _ = main.show();
+            let _ = main.set_focus();
+            Err(e)
+        }
     }
-
-    if let Some(existing) = app.get_webview_window("overlay") {
-        let _ = existing.close();
-    }
-
-    WebviewWindowBuilder::new(
-        &app,
-        "overlay",
-        WebviewUrl::App("index.html#/capture".into()),
-    )
-    .title("")
-    .decorations(false)
-    .always_on_top(true)
-    .skip_taskbar(true)
-    .resizable(false)
-    .maximizable(false)
-    .minimizable(false)
-    .closable(false)
-    .shadow(false)
-    .position(0.0, 0.0)
-    .inner_size(logical_w, logical_h)
-    .build()
-    .map_err(|e| e.to_string())?;
-
-    Ok(())
 }
 
 #[tauri::command]
 fn overlay_ready(app: AppHandle, state: State<'_, AppState>) -> Result<(), String> {
+    eprintln!("[capture] overlay_ready invoked");
     let payload = state
         .pending_screenshot
         .lock()
         .map_err(|e| e.to_string())?
         .clone();
-    if let Some(p) = payload {
-        if let Some(overlay) = app.get_webview_window("overlay") {
+    match (payload, app.get_webview_window("overlay")) {
+        (Some(p), Some(overlay)) => {
             overlay
                 .emit("overlay:screenshot", &p)
                 .map_err(|e| e.to_string())?;
+            eprintln!("[capture] overlay_ready emitted screenshot");
         }
+        (None, _) => eprintln!("[capture] overlay_ready: no pending screenshot"),
+        (_, None) => eprintln!("[capture] overlay_ready: no overlay window"),
     }
     Ok(())
 }

@@ -11,9 +11,10 @@ type GifRegion = { x: number; y: number; w: number; h: number; scaleFactor: numb
 
 const App: React.FC = () => {
   const [hash] = useState(() => window.location.hash)
+  const [overlayParam] = useState(() => new URLSearchParams(window.location.search).get('overlay'))
 
-  const isCapture = hash.startsWith('#/capture?') || hash === '#/capture'
-  const isCaptureGif = hash.startsWith('#/capture-gif?') || hash === '#/capture-gif'
+  const isCapture = overlayParam === 'capture' || hash.startsWith('#/capture?') || hash === '#/capture'
+  const isCaptureGif = overlayParam === 'capture-gif' || hash.startsWith('#/capture-gif?') || hash === '#/capture-gif'
   const isRecordingOverlay = hash.startsWith('#/recording-overlay/')
   const isRecordingControl = hash === '#/recording-control'
   const isCountdown = hash === '#/countdown'
