@@ -1,10 +1,9 @@
 use base64::{engine::general_purpose::STANDARD, Engine as _};
-use image::{DynamicImage, ImageFormat};
+use screenshots::image::{DynamicImage, ImageFormat};
 use std::io::Cursor;
 use std::sync::Mutex;
 use tauri::{AppHandle, Emitter, Manager, State, WebviewUrl, WebviewWindowBuilder};
 use tauri_plugin_clipboard_manager::ClipboardExt;
-use xcap::Monitor;
 
 #[derive(serde::Serialize, Clone)]
 #[serde(rename_all = "camelCase")]
@@ -26,13 +25,13 @@ struct AppState {
 }
 
 fn capture_primary(scale_factor: f64) -> Result<ScreenshotPayload, String> {
-    let monitors = Monitor::all().map_err(|e| e.to_string())?;
-    let monitor = monitors
+    let screens = screenshots::Screen::all().map_err(|e| e.to_string())?;
+    let screen = screens
         .iter()
-        .find(|m| m.is_primary().unwrap_or(false))
-        .or_else(|| monitors.first())
-        .ok_or_else(|| "no monitor found".to_string())?;
-    let rgba = monitor.capture_image().map_err(|e| e.to_string())?;
+        .find(|s| s.display_info.is_primary)
+        .or_else(|| screens.first())
+        .ok_or_else(|| "no screen found".to_string())?;
+    let rgba = screen.capture().map_err(|e| e.to_string())?;
     let width = rgba.width();
     let height = rgba.height();
     let dyn_img = DynamicImage::ImageRgba8(rgba);
@@ -74,7 +73,7 @@ fn capture_primary_screen(app: AppHandle) -> Result<String, String> {
 }
 
 #[tauri::command]
-fn start_region_capture(app: AppHandle, state: State<'_, AppState>) -> Result<(), String> {
+async fn start_region_capture(app: AppHandle, state: State<'_, AppState>) -> Result<(), String> {
     eprintln!("[capture] start_region_capture invoked");
     let main = app.get_webview_window("main").ok_or("no main window")?;
     let _ = main.hide();
@@ -199,7 +198,7 @@ fn overlay_region_selected(app: AppHandle, data_url: String) -> Result<(), Strin
         .ok_or_else(|| "invalid data url".to_string())?;
     let png_bytes = STANDARD.decode(base64_part).map_err(|e| e.to_string())?;
 
-    let dyn_img = image::load_from_memory(&png_bytes).map_err(|e| e.to_string())?;
+    let dyn_img = screenshots::image::load_from_memory(&png_bytes).map_err(|e| e.to_string())?;
     let rgba = dyn_img.to_rgba8();
     let (w, h) = (rgba.width(), rgba.height());
     let rgba_bytes: Vec<u8> = rgba.into_raw();
