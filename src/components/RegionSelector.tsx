@@ -330,7 +330,10 @@ const RegionSelector: React.FC<RegionSelectorProps> = ({ mode = 'screenshot' }) 
       )
 
       const croppedDataUrl = cropCanvas.toDataURL('image/png')
-      invoke('overlay_region_selected', { dataUrl: croppedDataUrl }).catch((err) => {
+      const now = new Date()
+      const pad = (n: number) => String(n).padStart(2, '0')
+      const filename = `markshot_${now.getFullYear()}${pad(now.getMonth() + 1)}${pad(now.getDate())}_${pad(now.getHours())}${pad(now.getMinutes())}${pad(now.getSeconds())}.png`
+      invoke('overlay_region_selected', { dataUrl: croppedDataUrl, filename }).catch((err) => {
         console.error('overlay_region_selected failed', err)
       })
     }

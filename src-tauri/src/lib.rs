@@ -191,8 +191,19 @@ fn overlay_cancel(app: AppHandle) -> Result<(), String> {
     Ok(())
 }
 
+#[derive(serde::Serialize, Clone)]
+#[serde(rename_all = "camelCase")]
+struct CaptureCompletePayload {
+    data_url: String,
+    saved_path: Option<String>,
+}
+
 #[tauri::command]
-fn overlay_region_selected(app: AppHandle, data_url: String) -> Result<(), String> {
+async fn overlay_region_selected(
+    app: AppHandle,
+    data_url: String,
+    filename: String,
+) -> Result<(), String> {
     let base64_part = data_url
         .strip_prefix("data:image/png;base64,")
         .ok_or_else(|| "invalid data url".to_string())?;
@@ -208,11 +219,38 @@ fn overlay_region_selected(app: AppHandle, data_url: String) -> Result<(), Strin
         .write_image(&img)
         .map_err(|e| e.to_string())?;
 
+    let saved_path = match save_png_to_pictures(&app, &filename, &png_bytes) {
+        Ok(p) => {
+            eprintln!("[capture] saved png to {}", p);
+            Some(p)
+        }
+        Err(e) => {
+            eprintln!("[capture] save failed: {e}");
+            None
+        }
+    };
+
     restore_main_and_close_overlay(&app);
     if let Some(main) = app.get_webview_window("main") {
-        let _ = main.emit("capture:complete", &data_url);
+        let payload = CaptureCompletePayload {
+            data_url,
+            saved_path,
+        };
+        let _ = main.emit("capture:complete", &payload);
     }
     Ok(())
+}
+
+fn save_png_to_pictures(app: &AppHandle, filename: &str, bytes: &[u8]) -> Result<String, String> {
+    let base = app
+        .path()
+        .picture_dir()
+        .map_err(|e| format!("picture_dir err: {e}"))?;
+    let dir = base.join("MarkShot");
+    std::fs::create_dir_all(&dir).map_err(|e| format!("mkdir err: {e}"))?;
+    let path = dir.join(filename);
+    std::fs::write(&path, bytes).map_err(|e| format!("write err: {e}"))?;
+    Ok(path.to_string_lossy().into_owned())
 }
 
 #[tauri::command]

@@ -55,9 +55,12 @@ const App: React.FC = () => {
   return <Placeholder />
 }
 
+type CaptureCompletePayload = { dataUrl: string; savedPath: string | null }
+
 function Placeholder() {
   const [captureMode, setCaptureMode] = useState<'screenshot' | 'gif'>('screenshot')
   const [captured, setCaptured] = useState<string | null>(null)
+  const [savedPath, setSavedPath] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
@@ -65,8 +68,9 @@ function Placeholder() {
     let unlistenComplete: UnlistenFn | null = null
     let unlistenCancelled: UnlistenFn | null = null
     const setup = async () => {
-      unlistenComplete = await listen<string>('capture:complete', (e) => {
-        setCaptured(e.payload)
+      unlistenComplete = await listen<CaptureCompletePayload>('capture:complete', (e) => {
+        setCaptured(e.payload.dataUrl)
+        setSavedPath(e.payload.savedPath)
         setBusy(false)
         setError(null)
       })
@@ -145,6 +149,11 @@ function Placeholder() {
           <div style={{ fontSize: 11, color: '#6c7086' }}>
             クリップボードに PNG コピー済み（Ctrl+V で貼り付け可）
           </div>
+          {savedPath && (
+            <div style={{ fontSize: 11, color: '#6c7086', wordBreak: 'break-all', maxWidth: '80%', textAlign: 'center' }}>
+              保存先: {savedPath}
+            </div>
+          )}
         </div>
       ) : (
         <div className="empty-state" style={{ flex: 1 }}>
