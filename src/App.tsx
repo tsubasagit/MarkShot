@@ -7,7 +7,7 @@ import RecordingOverlay from './components/RecordingOverlay'
 import RecordingControl from './components/RecordingControl'
 import CountdownOverlay from './components/CountdownOverlay'
 import CaptureBar from './components/CaptureBar'
-import { loadSettings, saveSetting, DEFAULT_SETTINGS, type Settings } from './utils/settings'
+import { loadSettings, DEFAULT_SETTINGS } from './utils/settings'
 
 type GifRegion = { x: number; y: number; w: number; h: number; scaleFactor: number }
 
@@ -65,7 +65,6 @@ function Placeholder() {
   const [savedPath, setSavedPath] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
-  const [settings, setSettings] = useState<Settings>(DEFAULT_SETTINGS)
 
   useEffect(() => {
     let unlistenComplete: UnlistenFn | null = null
@@ -85,7 +84,6 @@ function Placeholder() {
         console.error('loadSettings failed', e)
         return DEFAULT_SETTINGS
       })
-      setSettings(loaded)
       try {
         if (await isRegistered(loaded.shortcut)) {
           await unregister(loaded.shortcut)
@@ -107,16 +105,6 @@ function Placeholder() {
       if (registeredKey) unregister(registeredKey).catch(() => {})
     }
   }, [])
-
-  const toggleAutoSave = async () => {
-    const next = !settings.autoSave
-    setSettings((s) => ({ ...s, autoSave: next }))
-    try {
-      await saveSetting('autoSave', next)
-    } catch (e) {
-      console.error('saveSetting autoSave failed', e)
-    }
-  }
 
   const handleNewCapture = async (mode?: 'screenshot' | 'gif') => {
     const m = mode ?? captureMode
@@ -198,24 +186,9 @@ function Placeholder() {
           <h2>MarkShot</h2>
           <p>
             <strong>New</strong> ボタン / <strong>Ctrl+Shift+S</strong> で範囲選択開始<br />
-            ドラッグで範囲指定 → クリップボードに PNG コピー{settings.autoSave ? ' + 自動保存' : ''}<br />
+            ドラッグで範囲指定 → クリップボードに PNG コピー<br />
             Esc / 右クリックでキャンセル
           </p>
-          <label
-            style={{
-              display: 'inline-flex',
-              gap: 6,
-              fontSize: 12,
-              color: '#a6adc8',
-              alignItems: 'center',
-              marginTop: 8,
-              cursor: 'pointer',
-              userSelect: 'none',
-            }}
-          >
-            <input type="checkbox" checked={settings.autoSave} onChange={toggleAutoSave} />
-            自動保存（Pictures/MarkShot/ に PNG を書き出す）
-          </label>
           {busy && <p style={{ color: '#00FFFF' }}>オーバーレイ準備中…</p>}
           {error && <p style={{ color: '#ef4444', fontSize: 12 }}>{error}</p>}
         </div>

@@ -7,7 +7,7 @@ export type Settings = {
 
 export const DEFAULT_SETTINGS: Settings = {
   shortcut: 'CommandOrControl+Shift+S',
-  autoSave: true,
+  autoSave: false,
 }
 
 const STORE_FILE = 'settings.json'

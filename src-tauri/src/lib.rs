@@ -79,10 +79,24 @@ async fn start_region_capture(app: AppHandle) -> Result<(), String> {
 
 async fn perform_region_capture(app: AppHandle) -> Result<(), String> {
     eprintln!("[capture] perform_region_capture invoked");
+
+    // 直前のキャプチャでオーバーレイが残っていたら先に閉じて、完全に画面から消えるのを待つ
+    // （残骸が次のスクショに写り込むのを防ぐ）
+    if let Some(existing) = app.get_webview_window("overlay") {
+        eprintln!("[capture] closing leftover overlay before capture");
+        let _ = existing.close();
+        std::thread::sleep(std::time::Duration::from_millis(250));
+    }
+
     let main = app.get_webview_window("main").ok_or("no main window")?;
-    let _ = main.hide();
-    eprintln!("[capture] main hidden");
-    std::thread::sleep(std::time::Duration::from_millis(180));
+    if let Err(e) = main.hide() {
+        eprintln!("[capture] main.hide() err: {e}");
+    } else {
+        eprintln!("[capture] main hidden");
+    }
+    // Windows の hide メッセージ処理 + 描画更新が完了するまで待つ
+    // 180ms では不足し、メイン UI がスクショに写り込むことがあったため 350ms に延長
+    std::thread::sleep(std::time::Duration::from_millis(350));
 
     let state = app.state::<AppState>();
 
@@ -112,11 +126,6 @@ async fn perform_region_capture(app: AppHandle) -> Result<(), String> {
         {
             let mut guard = state.pending_screenshot.lock().map_err(|e| e.to_string())?;
             *guard = Some(payload);
-        }
-
-        if let Some(existing) = app.get_webview_window("overlay") {
-            eprintln!("[capture] closing stale overlay window");
-            let _ = existing.close();
         }
 
         eprintln!("[capture] building overlay webview window");
