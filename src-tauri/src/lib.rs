@@ -209,6 +209,7 @@ async fn overlay_region_selected(
     app: AppHandle,
     data_url: String,
     filename: String,
+    auto_save: bool,
 ) -> Result<(), String> {
     let base64_part = data_url
         .strip_prefix("data:image/png;base64,")
@@ -225,15 +226,20 @@ async fn overlay_region_selected(
         .write_image(&img)
         .map_err(|e| e.to_string())?;
 
-    let saved_path = match save_png_to_pictures(&app, &filename, &png_bytes) {
-        Ok(p) => {
-            eprintln!("[capture] saved png to {}", p);
-            Some(p)
+    let saved_path = if auto_save {
+        match save_png_to_pictures(&app, &filename, &png_bytes) {
+            Ok(p) => {
+                eprintln!("[capture] saved png to {}", p);
+                Some(p)
+            }
+            Err(e) => {
+                eprintln!("[capture] save failed: {e}");
+                None
+            }
         }
-        Err(e) => {
-            eprintln!("[capture] save failed: {e}");
-            None
-        }
+    } else {
+        eprintln!("[capture] auto_save disabled, skipping file write");
+        None
     };
 
     restore_main_and_close_overlay(&app);
@@ -281,6 +287,7 @@ pub fn run() {
         .plugin(tauri_plugin_fs::init())
         .plugin(tauri_plugin_clipboard_manager::init())
         .plugin(tauri_plugin_global_shortcut::Builder::new().build())
+        .plugin(tauri_plugin_store::Builder::default().build())
         .manage(AppState {
             pending_screenshot: Mutex::new(None),
         })

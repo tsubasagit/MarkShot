@@ -9,6 +9,7 @@ import {
   onPointerUp as logicPointerUp,
   type SelectionState,
 } from '@/utils/regionSelectionLogic'
+import { loadSettings, DEFAULT_SETTINGS } from '@/utils/settings'
 
 type ScreenshotEvent = {
   dataUrl: string
@@ -49,6 +50,7 @@ const RegionSelector: React.FC<RegionSelectorProps> = ({ mode = 'screenshot' }) 
   const screenshotImageRef = useRef<HTMLImageElement | null>(null)
   const overlayPaintedSentRef = useRef(false)
   const successfulDrawsRef = useRef(0)
+  const autoSaveRef = useRef<boolean>(DEFAULT_SETTINGS.autoSave)
   const [screenshotImage, setScreenshotImage] = useState<HTMLImageElement | null>(null)
   const [displayInfo, setDisplayInfo] = useState<{
     width: number
@@ -65,6 +67,11 @@ const RegionSelector: React.FC<RegionSelectorProps> = ({ mode = 'screenshot' }) 
     let disposed = false
 
     const setup = async () => {
+      loadSettings()
+        .then((s) => {
+          autoSaveRef.current = s.autoSave
+        })
+        .catch((e) => console.error('overlay loadSettings failed', e))
       unlistenScreenshot = await listen<ScreenshotEvent>('overlay:screenshot', (event) => {
         if (disposed) return
         const { dataUrl, info } = event.payload
@@ -333,7 +340,11 @@ const RegionSelector: React.FC<RegionSelectorProps> = ({ mode = 'screenshot' }) 
       const now = new Date()
       const pad = (n: number) => String(n).padStart(2, '0')
       const filename = `markshot_${now.getFullYear()}${pad(now.getMonth() + 1)}${pad(now.getDate())}_${pad(now.getHours())}${pad(now.getMinutes())}${pad(now.getSeconds())}.png`
-      invoke('overlay_region_selected', { dataUrl: croppedDataUrl, filename }).catch((err) => {
+      invoke('overlay_region_selected', {
+        dataUrl: croppedDataUrl,
+        filename,
+        autoSave: autoSaveRef.current,
+      }).catch((err) => {
         console.error('overlay_region_selected failed', err)
       })
     }
