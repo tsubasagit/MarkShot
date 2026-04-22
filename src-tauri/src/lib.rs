@@ -4,7 +4,6 @@ use std::io::Cursor;
 use std::sync::Mutex;
 use tauri::{AppHandle, Emitter, Manager, State, WebviewUrl, WebviewWindowBuilder};
 use tauri_plugin_clipboard_manager::ClipboardExt;
-use tauri_plugin_global_shortcut::{Code, GlobalShortcutExt, Modifiers, Shortcut, ShortcutState};
 
 #[derive(serde::Serialize, Clone)]
 #[serde(rename_all = "camelCase")]
@@ -281,39 +280,9 @@ pub fn run() {
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_fs::init())
         .plugin(tauri_plugin_clipboard_manager::init())
-        .plugin(
-            tauri_plugin_global_shortcut::Builder::new()
-                .with_handler(|app, shortcut, event| {
-                    if event.state() == ShortcutState::Pressed
-                        && shortcut.matches(Modifiers::CONTROL | Modifiers::SHIFT, Code::KeyS)
-                    {
-                        eprintln!("[shortcut] Ctrl+Shift+S pressed");
-                        if app.get_webview_window("overlay").is_some() {
-                            eprintln!("[shortcut] overlay already open, ignoring");
-                            return;
-                        }
-                        let handle = app.clone();
-                        tauri::async_runtime::spawn(async move {
-                            if let Err(e) = perform_region_capture(handle).await {
-                                eprintln!("[shortcut] capture err: {e}");
-                            }
-                        });
-                    }
-                })
-                .build(),
-        )
+        .plugin(tauri_plugin_global_shortcut::Builder::new().build())
         .manage(AppState {
             pending_screenshot: Mutex::new(None),
-        })
-        .setup(|app| {
-            let ctrl_shift_s =
-                Shortcut::new(Some(Modifiers::CONTROL | Modifiers::SHIFT), Code::KeyS);
-            if let Err(e) = app.global_shortcut().register(ctrl_shift_s) {
-                eprintln!("[shortcut] register Ctrl+Shift+S failed: {e}");
-            } else {
-                eprintln!("[shortcut] registered Ctrl+Shift+S");
-            }
-            Ok(())
         })
         .invoke_handler(tauri::generate_handler![
             capture_primary_screen,

@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react'
 import { invoke } from '@tauri-apps/api/core'
 import { listen, type UnlistenFn } from '@tauri-apps/api/event'
+import { register, unregister, isRegistered } from '@tauri-apps/plugin-global-shortcut'
 import RegionSelector from './components/RegionSelector'
 import RecordingOverlay from './components/RecordingOverlay'
 import RecordingControl from './components/RecordingControl'
@@ -67,6 +68,7 @@ function Placeholder() {
   useEffect(() => {
     let unlistenComplete: UnlistenFn | null = null
     let unlistenCancelled: UnlistenFn | null = null
+    const shortcutKey = 'CommandOrControl+Shift+S'
     const setup = async () => {
       unlistenComplete = await listen<CaptureCompletePayload>('capture:complete', (e) => {
         setCaptured(e.payload.dataUrl)
@@ -77,11 +79,24 @@ function Placeholder() {
       unlistenCancelled = await listen('capture:cancelled', () => {
         setBusy(false)
       })
+      try {
+        if (await isRegistered(shortcutKey)) {
+          await unregister(shortcutKey)
+        }
+        await register(shortcutKey, (event) => {
+          if (event.state !== 'Pressed') return
+          invoke('start_region_capture').catch((err) => console.error('shortcut invoke err', err))
+        })
+        console.log('[shortcut] JS registered', shortcutKey)
+      } catch (e) {
+        console.error('[shortcut] JS register failed', e)
+      }
     }
     setup()
     return () => {
       unlistenComplete?.()
       unlistenCancelled?.()
+      unregister(shortcutKey).catch(() => {})
     }
   }, [])
 
