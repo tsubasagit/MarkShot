@@ -164,8 +164,8 @@ function Placeholder() {
           </svg>
           <h2>MarkShot</h2>
           <p>
-            <strong>New</strong> ボタンで範囲選択開始<br />
-            ドラッグで範囲指定 → クリップボードに PNG コピー<br />
+            <strong>New</strong> ボタン / <strong>Ctrl+Shift+S</strong> で範囲選択開始<br />
+            ドラッグで範囲指定 → クリップボードに PNG コピー + 自動保存<br />
             Esc / 右クリックでキャンセル
           </p>
           {busy && <p style={{ color: '#00FFFF' }}>オーバーレイ準備中…</p>}

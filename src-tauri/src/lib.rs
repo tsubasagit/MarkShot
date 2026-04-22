@@ -4,6 +4,7 @@ use std::io::Cursor;
 use std::sync::Mutex;
 use tauri::{AppHandle, Emitter, Manager, State, WebviewUrl, WebviewWindowBuilder};
 use tauri_plugin_clipboard_manager::ClipboardExt;
+use tauri_plugin_global_shortcut::{Code, GlobalShortcutExt, Modifiers, Shortcut, ShortcutState};
 
 #[derive(serde::Serialize, Clone)]
 #[serde(rename_all = "camelCase")]
@@ -73,12 +74,18 @@ fn capture_primary_screen(app: AppHandle) -> Result<String, String> {
 }
 
 #[tauri::command]
-async fn start_region_capture(app: AppHandle, state: State<'_, AppState>) -> Result<(), String> {
-    eprintln!("[capture] start_region_capture invoked");
+async fn start_region_capture(app: AppHandle) -> Result<(), String> {
+    perform_region_capture(app).await
+}
+
+async fn perform_region_capture(app: AppHandle) -> Result<(), String> {
+    eprintln!("[capture] perform_region_capture invoked");
     let main = app.get_webview_window("main").ok_or("no main window")?;
     let _ = main.hide();
     eprintln!("[capture] main hidden");
     std::thread::sleep(std::time::Duration::from_millis(180));
+
+    let state = app.state::<AppState>();
 
     let run = || -> Result<(), String> {
         let monitor = main
@@ -274,9 +281,39 @@ pub fn run() {
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_fs::init())
         .plugin(tauri_plugin_clipboard_manager::init())
-        .plugin(tauri_plugin_global_shortcut::Builder::new().build())
+        .plugin(
+            tauri_plugin_global_shortcut::Builder::new()
+                .with_handler(|app, shortcut, event| {
+                    if event.state() == ShortcutState::Pressed
+                        && shortcut.matches(Modifiers::CONTROL | Modifiers::SHIFT, Code::KeyS)
+                    {
+                        eprintln!("[shortcut] Ctrl+Shift+S pressed");
+                        if app.get_webview_window("overlay").is_some() {
+                            eprintln!("[shortcut] overlay already open, ignoring");
+                            return;
+                        }
+                        let handle = app.clone();
+                        tauri::async_runtime::spawn(async move {
+                            if let Err(e) = perform_region_capture(handle).await {
+                                eprintln!("[shortcut] capture err: {e}");
+                            }
+                        });
+                    }
+                })
+                .build(),
+        )
         .manage(AppState {
             pending_screenshot: Mutex::new(None),
+        })
+        .setup(|app| {
+            let ctrl_shift_s =
+                Shortcut::new(Some(Modifiers::CONTROL | Modifiers::SHIFT), Code::KeyS);
+            if let Err(e) = app.global_shortcut().register(ctrl_shift_s) {
+                eprintln!("[shortcut] register Ctrl+Shift+S failed: {e}");
+            } else {
+                eprintln!("[shortcut] registered Ctrl+Shift+S");
+            }
+            Ok(())
         })
         .invoke_handler(tauri::generate_handler![
             capture_primary_screen,
