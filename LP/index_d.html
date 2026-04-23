@@ -773,6 +773,84 @@
             font-size: 0.88rem;
             color: var(--text-secondary);
         }
+        /* ===== FAQ ===== */
+        .faq {
+            padding: 100px 0;
+            background: var(--surface);
+        }
+
+        .faq-list {
+            max-width: 780px;
+            margin: 0 auto;
+            display: flex;
+            flex-direction: column;
+            gap: 14px;
+        }
+
+        .faq-item {
+            background: var(--surface-card);
+            border: 1px solid var(--border);
+            border-radius: 14px;
+            overflow: hidden;
+            transition: border-color 0.2s ease, box-shadow 0.2s ease;
+        }
+
+        .faq-item[open] {
+            border-color: rgba(0, 180, 182, 0.35);
+            box-shadow: 0 8px 24px rgba(43, 58, 78, 0.06);
+        }
+
+        .faq-item summary {
+            list-style: none;
+            cursor: pointer;
+            padding: 20px 24px;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 16px;
+            font-size: 1rem;
+            font-weight: 700;
+            color: var(--navy);
+        }
+
+        .faq-item summary::-webkit-details-marker {
+            display: none;
+        }
+
+        .faq-item summary::after {
+            content: '';
+            width: 10px;
+            height: 10px;
+            border-right: 2px solid var(--teal);
+            border-bottom: 2px solid var(--teal);
+            transform: rotate(45deg);
+            transition: transform 0.2s ease;
+            flex-shrink: 0;
+        }
+
+        .faq-item[open] summary::after {
+            transform: rotate(-135deg);
+        }
+
+        .faq-item .faq-body {
+            padding: 0 24px 22px;
+            font-size: 0.95rem;
+            line-height: 1.8;
+            color: var(--text-sub);
+        }
+
+        .faq-item .faq-body a {
+            color: var(--teal-dark);
+            text-decoration: underline;
+        }
+
+        .faq-item .faq-body code {
+            background: rgba(0, 180, 182, 0.08);
+            color: var(--navy);
+            padding: 2px 6px;
+            border-radius: 4px;
+            font-size: 0.88em;
+        }
     </style>
 </head>
 
@@ -1061,6 +1139,61 @@
                     <h3>貼るか保存</h3>
                     <p>クリップボード自動コピーで Ctrl+V すれば即貼り付け。必要なら好きなフォルダに自動保存。</p>
                 </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- FAQ -->
+    <section class="faq" id="faq">
+        <div class="container">
+            <div class="section-header">
+                <div class="section-label">FAQ</div>
+                <h2>よくあるご質問</h2>
+                <p>v2.0 リリースに合わせて届きやすい質問をまとめました。</p>
+            </div>
+
+            <div class="faq-list">
+                <details class="faq-item">
+                    <summary>Q. ARM64 以外（x64 の Windows）でも使えますか？</summary>
+                    <div class="faq-body">
+                        <p>現時点の v2.0.0 公式ビルドは <strong>Windows 11 ARM64 専用</strong>です。Surface Laptop 7 などの ARM64 機を主要ターゲットにチューニングしているためです。x64 環境では未検証で、インストーラも現在は提供していません。x64 ビルドのご要望は <a href="https://github.com/tsubasagit/MarkShot/issues" target="_blank" rel="noopener">GitHub Issues</a> または本ページ下部のお問い合わせからお寄せください。需要がまとまり次第、公式 x64 ビルドを追加予定です。</p>
+                    </div>
+                </details>
+
+                <details class="faq-item">
+                    <summary>Q. macOS や Linux では動作しますか？</summary>
+                    <div class="faq-body">
+                        <p>現在は <strong>Windows 版のみ</strong>です。Tauri 2 は仕組み上マルチプラットフォーム対応が可能ですが、MarkShot はスクリーンキャプチャ周りで Windows 固有 API（<code>screenshots</code> クレート経由）に依存しており、macOS / Linux 向けは未対応です。対応予定はリポジトリの Issues で議論しています。</p>
+                    </div>
+                </details>
+
+                <details class="faq-item">
+                    <summary>Q. 以前の v1.4.0（Electron 版）を引き続き使いたいのですが？</summary>
+                    <div class="faq-body">
+                        <p>v1.4.0 のインストーラは <a href="https://github.com/tsubasagit/MarkShot/releases" target="_blank" rel="noopener">GitHub Releases のアーカイブ</a>から引き続きダウンロード可能です。ただし v1 系は今後メンテナンスを行わない予定で、バグ修正や新機能は v2.0 以降に集約されます。よほどの理由がなければ v2.0 への移行をおすすめします。</p>
+                    </div>
+                </details>
+
+                <details class="faq-item">
+                    <summary>Q. GIF 録画や Google Drive 連携はなくなったのですか？</summary>
+                    <div class="faq-body">
+                        <p>v2.0 では意図的に削ぎ落としました。MarkShot は「撮って、書いて、貼るだけ」に特化するため、GIF 録画・Google Drive 自動アップロード・楕円／ステップ番号／バッジ注釈などは v2 系では搭載していません。これにより v1.4.0 比でインストール -97.8 %（259 MB → 5.79 MB）、常駐メモリ -91.2 % を実現しています。軽さと起動の速さを優先した設計判断です。</p>
+                    </div>
+                </details>
+
+                <details class="faq-item">
+                    <summary>Q. 画像の保存先や設定はどこで変えられますか？</summary>
+                    <div class="faq-body">
+                        <p>メインウィンドウ右上の設定アイコンから、<strong>自動保存フォルダ</strong>の変更と、保存するか／クリップボードだけに入れるかの切り替えができます。設定は <code>tauri-plugin-store</code> によりローカル（<code>%APPDATA%\com.markshot.app\settings.json</code>）に永続化され、次回起動時にも引き継がれます。グローバルショートカットも設定画面からカスタマイズ可能です（既定は <code>Ctrl+Shift+S</code>）。</p>
+                    </div>
+                </details>
+
+                <details class="faq-item">
+                    <summary>Q. 外部に通信を行いますか？プライバシーが心配です。</summary>
+                    <div class="faq-body">
+                        <p>MarkShot 本体は、キャプチャ画像やテキストなどのユーザーデータを外部サーバーに送信しません。画像はすべてローカルのクリップボードと、指定した保存フォルダにのみ書き出されます。アップデート確認などのオンライン機能も現時点では実装していません。ソースコードは <a href="https://github.com/tsubasagit/MarkShot" target="_blank" rel="noopener">GitHub で公開</a>しているため、挙動はご自身で検証いただけます。</p>
+                    </div>
+                </details>
             </div>
         </div>
     </section>
