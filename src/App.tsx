@@ -174,7 +174,7 @@ function Placeholder() {
           padding: '8px 12px',
           display: 'flex',
           gap: 10,
-          alignItems: 'flex-start',
+          alignItems: 'center',
           width: '100%',
           justifyContent: 'center',
         }}
