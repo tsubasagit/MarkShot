@@ -1,4 +1,12 @@
-import React, { useState, useEffect } from 'react'
+import React, { useEffect, useState } from 'react'
+import { open as openDialog } from '@tauri-apps/plugin-dialog'
+import { open as openExternal } from '@tauri-apps/plugin-shell'
+import {
+  loadSettings,
+  saveSetting,
+  DEFAULT_SETTINGS,
+  type Settings,
+} from '../utils/settings'
 
 interface SettingsPanelProps {
   onClose: () => void
@@ -60,7 +68,7 @@ const s: Record<string, React.CSSProperties> = {
     fontSize: 13,
     fontFamily: 'monospace',
     outline: 'none',
-    boxSizing: 'border-box' as const,
+    boxSizing: 'border-box',
     marginBottom: 10,
   },
   row: {
@@ -75,220 +83,145 @@ const s: Record<string, React.CSSProperties> = {
     borderRadius: 6,
     fontSize: 12,
     cursor: 'pointer',
-    fontFamily: 'Segoe UI, Meiryo, sans-serif',
     fontWeight: 600,
-    transition: 'opacity 0.15s',
+    background: '#2a2a4a',
+    color: '#e0e0f0',
   },
-  primaryBtn: {
+  btnPrimary: {
     background: '#00FFFF',
     color: '#0f0f1a',
   },
-  secondaryBtn: {
-    background: '#2a2a4a',
-    color: '#b0b0d0',
+  check: {
+    display: 'flex',
+    gap: 8,
+    alignItems: 'center',
+    fontSize: 13,
+    color: '#e0e0f0',
+    cursor: 'pointer',
+    userSelect: 'none',
+    marginBottom: 8,
   },
   hint: {
     fontSize: 11,
-    color: '#555',
+    color: '#6c7086',
     lineHeight: 1.5,
-    marginTop: 8,
+    marginTop: -4,
+    marginBottom: 10,
+  },
+  closeRow: {
+    display: 'flex',
+    justifyContent: 'flex-end',
+    marginTop: 16,
   },
 }
 
 const SettingsPanel: React.FC<SettingsPanelProps> = ({ onClose }) => {
-  const [localSavePath, setLocalSavePath] = useState('')
-  const [driveFolderId, setDriveFolderId] = useState('')
-  const [screenshotShortcut, setScreenshotShortcut] = useState('')
-  const [googleConnected, setGoogleConnected] = useState(false)
+  const [settings, setSettings] = useState<Settings>(DEFAULT_SETTINGS)
   const [loading, setLoading] = useState(true)
-  const [saving, setSaving] = useState(false)
-  const [loggingIn, setLoggingIn] = useState(false)
-  const [message, setMessage] = useState<{ text: string; error: boolean } | null>(null)
 
   useEffect(() => {
-    loadData()
+    loadSettings()
+      .then((loaded) => setSettings(loaded))
+      .catch((e) => console.error('SettingsPanel loadSettings', e))
+      .finally(() => setLoading(false))
   }, [])
 
-  const loadData = async () => {
+  const update = async <K extends keyof Settings>(key: K, value: Settings[K]) => {
+    setSettings((prev) => ({ ...prev, [key]: value }))
     try {
-      const [settings, connected] = await Promise.all([
-        window.electronAPI.getSettings(),
-        window.electronAPI.googleStatus(),
-      ])
-      setLocalSavePath(settings.localSavePath)
-      setDriveFolderId(settings.driveFolderId)
-      setScreenshotShortcut(settings.screenshotShortcut ?? 'CommandOrControl+Shift+S')
-      setGoogleConnected(connected)
-    } catch {}
-    setLoading(false)
-  }
-
-  const showMessage = (text: string, error = false) => {
-    setMessage({ text, error })
-    setTimeout(() => setMessage(null), 4000)
-  }
-
-  const handleBrowse = async () => {
-    const path = await window.electronAPI.browseFolder()
-    if (path) setLocalSavePath(path)
-  }
-
-  const handleSave = async () => {
-    setSaving(true)
-    try {
-      await window.electronAPI.updateSettings({
-        localSavePath,
-        driveFolderId,
-        screenshotShortcut: screenshotShortcut.trim() || 'CommandOrControl+Shift+S',
-      })
-      showMessage('設定を保存しました')
-    } catch (err: any) {
-      showMessage(`保存失敗: ${err.message}`, true)
+      await saveSetting(key, value)
+    } catch (e) {
+      console.error(`saveSetting ${String(key)} failed`, e)
     }
-    setSaving(false)
   }
 
-  const handleGoogleLogin = async () => {
-    setLoggingIn(true)
-    try {
-      await window.electronAPI.googleLogin()
-      setGoogleConnected(true)
-      showMessage('Googleアカウントに接続しました')
-    } catch (err: any) {
-      showMessage(`ログイン失敗: ${err.message}`, true)
+  const pickSaveDir = async () => {
+    const selected = await openDialog({
+      directory: true,
+      multiple: false,
+      title: '保存先フォルダを選択',
+      defaultPath: settings.saveDir ?? undefined,
+    })
+    if (typeof selected === 'string') {
+      update('saveDir', selected)
     }
-    setLoggingIn(false)
   }
 
-  const handleGoogleLogout = async () => {
-    await window.electronAPI.googleLogout()
-    setGoogleConnected(false)
-    showMessage('Googleアカウントから切断しました')
+  if (loading) {
+    return (
+      <div style={s.overlay} onClick={onClose}>
+        <div style={s.panel} onClick={(e) => e.stopPropagation()}>
+          <div>読み込み中…</div>
+        </div>
+      </div>
+    )
   }
-
-  if (loading) return null
 
   return (
     <div style={s.overlay} onClick={(e) => e.target === e.currentTarget && onClose()}>
       <div style={s.panel}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
           <div style={s.title}>設定</div>
-          <button
-            style={{ ...s.btn, ...s.secondaryBtn }}
-            onClick={onClose}
-          >
-            閉じる
-          </button>
+          <button style={s.btn} onClick={onClose}>閉じる</button>
         </div>
 
-        {/* Screenshot shortcut */}
         <div style={s.section}>
-          <div style={s.sectionTitle}>ショートカット</div>
-          <label style={s.label}>スクリーンショット開始</label>
+          <div style={s.sectionTitle}>キャプチャ</div>
+
+          <label style={s.label}>グローバルショートカット</label>
           <input
             style={s.input}
-            value={screenshotShortcut}
-            onChange={(e) => setScreenshotShortcut(e.target.value)}
+            value={settings.shortcut}
+            onChange={(e) => setSettings((p) => ({ ...p, shortcut: e.target.value }))}
+            onBlur={() => update('shortcut', settings.shortcut)}
             placeholder="CommandOrControl+Shift+S"
           />
           <div style={s.hint}>
-            アプリ全体で有効なグローバルショートカット。例: Ctrl+Shift+S (Windows) / Command+Shift+S (Mac)。空欄ならデフォルト（Ctrl+Shift+S）を使用。
+            例: CommandOrControl+Shift+S / Alt+PrintScreen。変更はアプリ再起動後に反映されます。
           </div>
-        </div>
 
-        {/* Local save path */}
-        <div style={s.section}>
-          <div style={s.sectionTitle}>ローカル保存先</div>
-          <label style={s.label}>自動保存フォルダ</label>
-          <div style={s.row}>
+          <label style={s.check}>
             <input
-              style={{ ...s.input, flex: 1, marginBottom: 0 }}
-              value={localSavePath}
-              onChange={(e) => setLocalSavePath(e.target.value)}
+              type="checkbox"
+              checked={settings.copyToClipboard}
+              onChange={(e) => update('copyToClipboard', e.target.checked)}
             />
-            <button
-              style={{ ...s.btn, ...s.secondaryBtn }}
-              onClick={handleBrowse}
-            >
-              参照
-            </button>
-          </div>
-          <div style={s.hint}>
-            新規スクショ時やウィンドウを閉じた時に、ここに自動保存されます。
-          </div>
-        </div>
+            キャプチャ後にクリップボードへ PNG コピー
+          </label>
 
-        {/* Google Drive */}
-        <div style={s.section}>
-          <div style={s.sectionTitle}>Google Drive</div>
+          <label style={s.check}>
+            <input
+              type="checkbox"
+              checked={settings.autoSave}
+              onChange={(e) => update('autoSave', e.target.checked)}
+            />
+            キャプチャ後にファイル保存
+          </label>
 
-          <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 12 }}>
-            {googleConnected ? (
-              <>
-                <span style={{ fontSize: 13, color: '#39FF14' }}>
-                  接続済み
-                </span>
-                <button
-                  style={{ ...s.btn, ...s.secondaryBtn, fontSize: 11 }}
-                  onClick={handleGoogleLogout}
-                >
-                  ログアウト
-                </button>
-              </>
-            ) : (
-              <button
-                style={{ ...s.btn, ...s.primaryBtn }}
-                onClick={handleGoogleLogin}
-                disabled={loggingIn}
-              >
-                {loggingIn ? 'ブラウザで認証中...' : 'Googleでログイン'}
-              </button>
-            )}
-          </div>
-
-          <label style={s.label}>Google Drive フォルダID（任意）</label>
-          <input
-            style={s.input}
-            value={driveFolderId}
-            onChange={(e) => setDriveFolderId(e.target.value)}
-            placeholder="フォルダURLの末尾のID（空欄ならマイドライブ直下）"
-          />
-
-          <div style={s.hint}>
-            「Googleでログイン」を押すとブラウザが開きます。Googleアカウントで認証すると、スクリーンショットをGoogle Driveに直接アップロードできます。<br /><br />
-            <strong style={{ color: '#8ab4c8' }}>フォルダIDの確認方法：</strong><br />
-            Google Drive で保存先フォルダを開き、URLの末尾がフォルダIDです。<br />
-            例: https://drive.google.com/drive/folders/<span style={{ color: '#00FFFF' }}>xxxxx</span> → 「xxxxx」の部分<br />
-            空欄の場合はマイドライブ直下に保存されます。
-          </div>
-        </div>
-
-        {/* Save button + message */}
-        <div style={{ display: 'flex', gap: 10, alignItems: 'center' }}>
-          <button
-            style={{ ...s.btn, ...s.primaryBtn }}
-            onClick={handleSave}
-            disabled={saving}
-          >
-            {saving ? '保存中...' : '設定を保存'}
-          </button>
-          {message && (
-            <span
-              style={{
-                fontSize: 12,
-                color: message.error ? '#FF0055' : '#39FF14',
-              }}
-            >
-              {message.text}
-            </span>
+          {settings.autoSave && (
+            <>
+              <label style={s.label}>保存先フォルダ</label>
+              <div style={s.row}>
+                <input
+                  style={{ ...s.input, marginBottom: 0, flex: 1 }}
+                  readOnly
+                  value={settings.saveDir ?? '（未設定 → Pictures/MarkShot/）'}
+                />
+                <button style={s.btn} onClick={pickSaveDir}>参照</button>
+                {settings.saveDir && (
+                  <button style={s.btn} onClick={() => update('saveDir', null)}>
+                    既定に戻す
+                  </button>
+                )}
+              </div>
+            </>
           )}
         </div>
 
-        {/* About */}
-        <div style={{ ...s.section, marginTop: 20, marginBottom: 0 }}>
+        <div style={s.section}>
           <div style={s.sectionTitle}>アプリ情報</div>
           <div style={{ fontSize: 13, color: '#b0b0d0', lineHeight: 1.8 }}>
-            <div><span style={{ color: '#6c7086' }}>バージョン：</span>v1.4.0</div>
+            <div><span style={{ color: '#6c7086' }}>バージョン：</span>v2.0.0</div>
             <div><span style={{ color: '#6c7086' }}>作成者：</span>宮崎翼</div>
             <div>
               <span style={{ color: '#6c7086' }}>お問い合わせ：</span>
@@ -297,13 +230,21 @@ const SettingsPanel: React.FC<SettingsPanelProps> = ({ onClose }) => {
                 style={{ color: '#8ab4c8', textDecoration: 'underline', cursor: 'pointer' }}
                 onClick={(e) => {
                   e.preventDefault()
-                  window.electronAPI?.openExternal('https://apptalenthub.co.jp')
+                  openExternal('https://apptalenthub.co.jp').catch((err) =>
+                    console.error('openExternal failed', err),
+                  )
                 }}
               >
                 AppTalentHub
               </a>
             </div>
           </div>
+        </div>
+
+        <div style={s.closeRow}>
+          <button style={{ ...s.btn, ...s.btnPrimary }} onClick={onClose}>
+            閉じる
+          </button>
         </div>
       </div>
     </div>

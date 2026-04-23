@@ -9,7 +9,7 @@ import {
   onPointerUp as logicPointerUp,
   type SelectionState,
 } from '@/utils/regionSelectionLogic'
-import { loadSettings, DEFAULT_SETTINGS } from '@/utils/settings'
+import { loadSettings, DEFAULT_SETTINGS, type Settings } from '@/utils/settings'
 
 type ScreenshotEvent = {
   dataUrl: string
@@ -50,7 +50,7 @@ const RegionSelector: React.FC<RegionSelectorProps> = ({ mode = 'screenshot' }) 
   const screenshotImageRef = useRef<HTMLImageElement | null>(null)
   const overlayPaintedSentRef = useRef(false)
   const successfulDrawsRef = useRef(0)
-  const autoSaveRef = useRef<boolean>(DEFAULT_SETTINGS.autoSave)
+  const settingsRef = useRef<Settings>(DEFAULT_SETTINGS)
   const [screenshotImage, setScreenshotImage] = useState<HTMLImageElement | null>(null)
   const [displayInfo, setDisplayInfo] = useState<{
     width: number
@@ -69,7 +69,7 @@ const RegionSelector: React.FC<RegionSelectorProps> = ({ mode = 'screenshot' }) 
     const setup = async () => {
       loadSettings()
         .then((s) => {
-          autoSaveRef.current = s.autoSave
+          settingsRef.current = s
         })
         .catch((e) => console.error('overlay loadSettings failed', e))
       unlistenScreenshot = await listen<ScreenshotEvent>('overlay:screenshot', (event) => {
@@ -343,7 +343,9 @@ const RegionSelector: React.FC<RegionSelectorProps> = ({ mode = 'screenshot' }) 
       invoke('overlay_region_selected', {
         dataUrl: croppedDataUrl,
         filename,
-        autoSave: autoSaveRef.current,
+        autoSave: settingsRef.current.autoSave,
+        saveDir: settingsRef.current.saveDir,
+        copyToClipboard: settingsRef.current.copyToClipboard,
       }).catch((err) => {
         console.error('overlay_region_selected failed', err)
       })

@@ -219,24 +219,30 @@ async fn overlay_region_selected(
     data_url: String,
     filename: String,
     auto_save: bool,
+    save_dir: Option<String>,
+    copy_to_clipboard: bool,
 ) -> Result<(), String> {
     let base64_part = data_url
         .strip_prefix("data:image/png;base64,")
         .ok_or_else(|| "invalid data url".to_string())?;
     let png_bytes = STANDARD.decode(base64_part).map_err(|e| e.to_string())?;
 
-    let dyn_img = screenshots::image::load_from_memory(&png_bytes).map_err(|e| e.to_string())?;
-    let rgba = dyn_img.to_rgba8();
-    let (w, h) = (rgba.width(), rgba.height());
-    let rgba_bytes: Vec<u8> = rgba.into_raw();
-
-    let img = tauri::image::Image::new(&rgba_bytes, w, h);
-    app.clipboard()
-        .write_image(&img)
-        .map_err(|e| e.to_string())?;
+    if copy_to_clipboard {
+        let dyn_img =
+            screenshots::image::load_from_memory(&png_bytes).map_err(|e| e.to_string())?;
+        let rgba = dyn_img.to_rgba8();
+        let (w, h) = (rgba.width(), rgba.height());
+        let rgba_bytes: Vec<u8> = rgba.into_raw();
+        let img = tauri::image::Image::new(&rgba_bytes, w, h);
+        app.clipboard()
+            .write_image(&img)
+            .map_err(|e| e.to_string())?;
+    } else {
+        eprintln!("[capture] copy_to_clipboard disabled, skipping clipboard write");
+    }
 
     let saved_path = if auto_save {
-        match save_png_to_pictures(&app, &filename, &png_bytes) {
+        match save_png_to_disk(&app, save_dir.as_deref(), &filename, &png_bytes) {
             Ok(p) => {
                 eprintln!("[capture] saved png to {}", p);
                 Some(p)
@@ -262,12 +268,20 @@ async fn overlay_region_selected(
     Ok(())
 }
 
-fn save_png_to_pictures(app: &AppHandle, filename: &str, bytes: &[u8]) -> Result<String, String> {
-    let base = app
-        .path()
-        .picture_dir()
-        .map_err(|e| format!("picture_dir err: {e}"))?;
-    let dir = base.join("MarkShot");
+fn save_png_to_disk(
+    app: &AppHandle,
+    save_dir: Option<&str>,
+    filename: &str,
+    bytes: &[u8],
+) -> Result<String, String> {
+    let dir = match save_dir {
+        Some(custom) if !custom.trim().is_empty() => std::path::PathBuf::from(custom),
+        _ => app
+            .path()
+            .picture_dir()
+            .map_err(|e| format!("picture_dir err: {e}"))?
+            .join("MarkShot"),
+    };
     std::fs::create_dir_all(&dir).map_err(|e| format!("mkdir err: {e}"))?;
     let path = dir.join(filename);
     std::fs::write(&path, bytes).map_err(|e| format!("write err: {e}"))?;

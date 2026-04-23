@@ -3,11 +3,15 @@ import { load, type Store } from '@tauri-apps/plugin-store'
 export type Settings = {
   shortcut: string
   autoSave: boolean
+  saveDir: string | null
+  copyToClipboard: boolean
 }
 
 export const DEFAULT_SETTINGS: Settings = {
   shortcut: 'CommandOrControl+Shift+S',
   autoSave: false,
+  saveDir: null,
+  copyToClipboard: true,
 }
 
 const STORE_FILE = 'settings.json'
