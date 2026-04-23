@@ -5,12 +5,12 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <meta name="description"
-        content="MarkShot - スクリーンショット、注釈、GIF録画、Google Drive連携。撮って、書いて、共有する。すべてをワンストップで。" />
-    <title>MarkShot - 撮って、書いて、共有する。</title>
+        content="MarkShot v2.0 — インストール 5.79MB・起動 25MB。Windows向けの超軽量スクリーンショット＆注釈ツール。撮って、書いて、貼るだけ。" />
+    <title>MarkShot v2.0 — 撮って、書いて、貼るだけ。</title>
 
     <!-- Open Graph -->
-    <meta property="og:title" content="MarkShot - 撮って、書いて、共有する。" />
-    <meta property="og:description" content="スクリーンショット、注釈、GIF録画、Google Drive連携。Windows向け無料ツール。" />
+    <meta property="og:title" content="MarkShot v2.0 — 撮って、書いて、貼るだけ。" />
+    <meta property="og:description" content="Tauri化で-98%。インストール5.79MB、起動25MBの超軽量スクショツール。矢印・テキスト・枠・ペン・モザイク対応。" />
     <meta property="og:image" content="https://tsubasagit.github.io/MarkShot/img/markshot1.png" />
     <meta property="og:url" content="https://tsubasagit.github.io/MarkShot/" />
     <meta property="og:type" content="website" />
@@ -18,12 +18,12 @@
 
     <!-- Twitter Card -->
     <meta name="twitter:card" content="summary_large_image" />
-    <meta name="twitter:title" content="MarkShot - 撮って、書いて、共有する。" />
-    <meta name="twitter:description" content="スクリーンショット、注釈、GIF録画、Google Drive連携。Windows向け無料ツール。" />
+    <meta name="twitter:title" content="MarkShot v2.0 — 撮って、書いて、貼るだけ。" />
+    <meta name="twitter:description" content="Tauri化で-98%。インストール5.79MB、起動25MBの超軽量スクショツール。" />
     <meta name="twitter:image" content="https://tsubasagit.github.io/MarkShot/img/markshot1.png" />
 
     <!-- SEO -->
-    <meta name="keywords" content="スクリーンショット,screenshot,annotation,注釈,GIF録画,Windows,MarkShot,screen capture" />
+    <meta name="keywords" content="スクリーンショット,screenshot,annotation,注釈,軽量,Windows,MarkShot,Tauri,screen capture" />
     <link rel="canonical" href="https://tsubasagit.github.io/MarkShot/" />
     <link rel="icon" type="image/png" href="./img/logo3.png" />
 
@@ -797,15 +797,16 @@
     <!-- HERO -->
     <section class="hero">
         <div class="container">
-            <div class="hero-badge">v1.4.0 リリース</div>
+            <div class="hero-badge">v2.0.0 リリース — Tauri化で -98%</div>
             <img src="../img/logo3.png" alt="MarkShot Logo" class="hero-logo" />
-            <h1>撮って、書いて、<span class="accent">共有する。</span></h1>
+            <h1>撮って、書いて、<span class="accent">貼るだけ。</span></h1>
             <p>
-                スクリーンショットの撮影から注釈、GIF録画、Google Driveへの保存まで。
-                MarkShotがすべてをワンストップで実現します。
+                インストール <strong>5.79MB</strong> / 起動 <strong>25MB</strong>。
+                Windows Snipping Tool より軽い超ミニマルなスクリーンショットツール。
+                矢印・テキスト・枠・ペン・モザイクで、伝わる1枚を数秒で。
             </p>
             <div class="hero-actions">
-                <a href="https://github.com/tsubasagit/MarkShot/releases/latest/download/MarkShot.Setup.1.4.0.exe" class="btn-primary" onclick="gtag('event','download_click',{event_category:'download',event_label:this.closest('section').className})">
+                <a href="https://github.com/tsubasagit/MarkShot/releases/latest/download/MarkShot_2.0.0_arm64-setup.exe" class="btn-primary" onclick="gtag('event','download_click',{event_category:'download',event_label:this.closest('section').className})">
                     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"
                         stroke-linejoin="round">
                         <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
@@ -822,7 +823,7 @@
                     GitHub
                 </a>
             </div>
-            <p class="hero-note">Windows対応 / 無料 / オープンソース</p>
+            <p class="hero-note">Windows 11 ARM64 対応 / 無料 / オープンソース</p>
 
             <div class="hero-screenshot">
                 <img src="../img/markshot1.png" alt="MarkShot ホーム画面" />
@@ -838,6 +839,11 @@
                 <h2>お知らせ</h2>
             </div>
             <div class="news-list">
+                <div class="news-item">
+                    <span class="news-date">2026-04-23</span>
+                    <span class="news-tag feature">メジャー</span>
+                    <span class="news-text">v2.0.0 — Tauri 2 に全面書き直し。インストール 259MB → <strong>5.79MB</strong>、ワーキングセット 290MB → <strong>25MB</strong> に削減。注釈ツールは矢印・テキスト・枠・ペン・モザイクの5種に整理。</span>
+                </div>
                 <div class="news-item">
                     <span class="news-date">2026-04-10</span>
                     <span class="news-tag feature">機能</span>
@@ -898,34 +904,31 @@
                             <path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z" />
                         </svg>
                     </div>
-                    <h3>豊富な注釈ツール</h3>
-                    <p>矢印、テキスト、矩形、楕円、フリーハンド、モザイク。カラーパレットで自由にカスタマイズ。</p>
+                    <h3>5つの注釈ツール</h3>
+                    <p>矢印・テキスト・枠・ペン・モザイク。色5色・太さ3段で、伝えたいことを最短で。</p>
                 </div>
 
                 <div class="feature-card">
                     <div class="feature-icon">
                         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
                             stroke-linecap="round" stroke-linejoin="round">
-                            <circle cx="12" cy="12" r="10" />
-                            <polyline points="12 6 12 12 16 14" />
+                            <path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z" />
                         </svg>
                     </div>
-                    <h3>GIF録画</h3>
-                    <p>画面の一部を選択してGIFアニメーションをそのまま録画。操作手順の共有に最適。</p>
+                    <h3>超軽量 5.79MB</h3>
+                    <p>Tauri 2 と WebView2 を採用し、Electron 版の <strong>1/45</strong> のサイズに。ディスクもメモリもほぼ使いません。</p>
                 </div>
 
                 <div class="feature-card">
                     <div class="feature-icon">
                         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
                             stroke-linecap="round" stroke-linejoin="round">
-                            <path
-                                d="M19.35 10.04A7.49 7.49 0 0 0 12 4C9.11 4 6.6 5.64 5.35 8.04A5.994 5.994 0 0 0 0 14c0 3.31 2.69 6 6 6h13c2.76 0 5-2.24 5-5 0-2.64-2.05-4.78-4.65-4.96z" />
-                            <polyline points="16 13 12 9 8 13" />
-                            <line x1="12" y1="9" x2="12" y2="17" />
+                            <rect x="9" y="2" width="6" height="4" rx="1" />
+                            <path d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2" />
                         </svg>
                     </div>
-                    <h3>Google Drive連携</h3>
-                    <p>ワンクリックでGoogle Driveにアップロード。チームへの共有がスムーズに。</p>
+                    <h3>クリップボード直貼り</h3>
+                    <p>キャプチャ完了と同時にクリップボードへ。Slack / Teams / メールに <strong>Ctrl+V</strong> で即貼り付け。</p>
                 </div>
 
                 <div class="feature-card">
@@ -978,21 +981,21 @@
                                 stroke-linecap="round" stroke-linejoin="round">
                                 <polyline points="20 6 9 17 4 12" />
                             </svg>
-                            矢印・テキスト・図形・フリーハンド描画
+                            矢印・テキスト・枠・ペン・モザイクの5ツール
                         </li>
                         <li>
                             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"
                                 stroke-linecap="round" stroke-linejoin="round">
                                 <polyline points="20 6 9 17 4 12" />
                             </svg>
-                            12色のカラーパレット + サイズ調整
+                            色 5 色 ＋ 太さ 3 段、必要十分なシンプル設計
                         </li>
                         <li>
                             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"
                                 stroke-linecap="round" stroke-linejoin="round">
                                 <polyline points="20 6 9 17 4 12" />
                             </svg>
-                            モザイク処理で個人情報を保護
+                            モザイクで個人情報を目隠し、Undo / Redo 完備
                         </li>
                     </ul>
                 </div>
@@ -1000,29 +1003,29 @@
 
             <div class="showcase-grid" style="margin-top: 80px;">
                 <div class="showcase-content" style="order: -1;">
-                    <h3>柔軟な保存 &amp; 共有設定</h3>
-                    <p>ローカル保存もクラウド連携も自由自在。ワークフローに合わせた設定で効率アップ。</p>
+                    <h3>設定はシンプルに、永続化は確実に</h3>
+                    <p>必要なことだけ、覚えてほしいことだけ。設定は <code>%APPDATA%\com.markshot.app\settings.json</code> に自動保存されます。</p>
                     <ul class="showcase-list">
                         <li>
                             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"
                                 stroke-linecap="round" stroke-linejoin="round">
                                 <polyline points="20 6 9 17 4 12" />
                             </svg>
-                            ローカルフォルダへの自動保存パス設定
+                            ローカル保存先フォルダを GUI で選択・変更
                         </li>
                         <li>
                             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"
                                 stroke-linecap="round" stroke-linejoin="round">
                                 <polyline points="20 6 9 17 4 12" />
                             </svg>
-                            Google Drive OAuth認証で安全に接続
+                            クリップボードコピー・自動保存を個別 on/off
                         </li>
                         <li>
                             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"
                                 stroke-linecap="round" stroke-linejoin="round">
                                 <polyline points="20 6 9 17 4 12" />
                             </svg>
-                            指定フォルダIDで保存先を細かく管理
+                            グローバルショートカットを自由にカスタマイズ
                         </li>
                     </ul>
                 </div>
@@ -1046,17 +1049,17 @@
                 <div class="workflow-step">
                     <div class="step-number">1</div>
                     <h3>キャプチャ</h3>
-                    <p>Ctrl+Shift+S またはトレイアイコンのダブルクリックで即起動。ドラッグで範囲を選択。</p>
+                    <p>Ctrl+Shift+S でどこからでも即起動。ドラッグで範囲を選択するだけ。</p>
                 </div>
                 <div class="workflow-step">
                     <div class="step-number">2</div>
-                    <h3>注釈を追加</h3>
-                    <p>矢印やテキスト、図形、モザイクなど豊富なツールで注釈を書き込み。</p>
+                    <h3>注釈を追加（任意）</h3>
+                    <p>矢印・テキスト・枠・ペン・モザイクの5ツールで、必要最小限の注釈を書き込み。</p>
                 </div>
                 <div class="workflow-step">
                     <div class="step-number">3</div>
-                    <h3>保存 &amp; 共有</h3>
-                    <p>クリップボードにコピー、ローカル保存、またはGoogle Driveへ直接アップロード。</p>
+                    <h3>貼るか保存</h3>
+                    <p>クリップボード自動コピーで Ctrl+V すれば即貼り付け。必要なら好きなフォルダに自動保存。</p>
                 </div>
             </div>
         </div>
@@ -1065,9 +1068,9 @@
     <!-- CTA -->
     <section class="cta-section" id="download">
         <div class="container">
-            <h2>今すぐ<span class="accent">MarkShot</span>を始めよう</h2>
-            <p>インストールして、すぐに使い始められます。</p>
-            <a href="https://github.com/tsubasagit/MarkShot/releases/latest/download/MarkShot.Setup.1.4.0.exe" class="btn-primary" onclick="gtag('event','download_click',{event_category:'download',event_label:this.closest('section').className})">
+            <h2>今すぐ<span class="accent">MarkShot v2.0</span>を始めよう</h2>
+            <p>5.79MB、インストール 10 秒。軽すぎて忘れます。</p>
+            <a href="https://github.com/tsubasagit/MarkShot/releases/latest/download/MarkShot_2.0.0_arm64-setup.exe" class="btn-primary" onclick="gtag('event','download_click',{event_category:'download',event_label:this.closest('section').className})">
                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"
                     stroke-linejoin="round" width="20" height="20">
                     <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
@@ -1076,7 +1079,7 @@
                 </svg>
                 無料ダウンロード
             </a>
-            <p class="cta-note">Windows 10 / 11 対応 | v1.4.0</p>
+            <p class="cta-note">Windows 11 ARM64 対応 | v2.0.0</p>
         </div>
     </section>
 
