@@ -8,6 +8,7 @@ import RecordingControl from './components/RecordingControl'
 import CountdownOverlay from './components/CountdownOverlay'
 import CaptureBar from './components/CaptureBar'
 import SettingsPanel from './components/SettingsPanel'
+import AnnotationEditor from './components/AnnotationEditor'
 import { loadSettings, DEFAULT_SETTINGS } from './utils/settings'
 
 type GifRegion = { x: number; y: number; w: number; h: number; scaleFactor: number }
@@ -67,6 +68,7 @@ function Placeholder() {
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [settingsOpen, setSettingsOpen] = useState(false)
+  const [editing, setEditing] = useState(false)
 
   useEffect(() => {
     let unlistenComplete: UnlistenFn | null = null
@@ -108,6 +110,29 @@ function Placeholder() {
     }
   }, [])
 
+  const handleEditDone = async (editedDataUrl: string) => {
+    const settings = await loadSettings().catch(() => DEFAULT_SETTINGS)
+    const now = new Date()
+    const pad = (n: number) => String(n).padStart(2, '0')
+    const filename = `markshot_edited_${now.getFullYear()}${pad(now.getMonth() + 1)}${pad(now.getDate())}_${pad(now.getHours())}${pad(now.getMinutes())}${pad(now.getSeconds())}.png`
+    try {
+      const saved = await invoke<string | null>('save_annotated_image', {
+        dataUrl: editedDataUrl,
+        filename,
+        autoSave: settings.autoSave,
+        saveDir: settings.saveDir,
+        copyToClipboard: settings.copyToClipboard,
+      })
+      setCaptured(editedDataUrl)
+      setSavedPath(saved)
+    } catch (e) {
+      console.error('save_annotated_image failed', e)
+      setError(String(e))
+    } finally {
+      setEditing(false)
+    }
+  }
+
   const handleNewCapture = async (mode?: 'screenshot' | 'gif') => {
     const m = mode ?? captureMode
     if (m === 'gif') {
@@ -122,6 +147,16 @@ function Placeholder() {
       setError(String(e))
       setBusy(false)
     }
+  }
+
+  if (editing && captured) {
+    return (
+      <AnnotationEditor
+        imageDataUrl={captured}
+        onDone={handleEditDone}
+        onCancel={() => setEditing(false)}
+      />
+    )
   }
 
   return (
@@ -191,6 +226,23 @@ function Placeholder() {
             alt="captured"
             style={{ maxWidth: '100%', maxHeight: '100%', border: '1px solid #2a2a4a', borderRadius: 4 }}
           />
+          <div style={{ display: 'flex', gap: 8 }}>
+            <button
+              onClick={() => setEditing(true)}
+              style={{
+                padding: '6px 14px',
+                background: '#00FFFF',
+                color: '#0f0f1a',
+                border: 'none',
+                borderRadius: 6,
+                cursor: 'pointer',
+                fontSize: 12,
+                fontWeight: 600,
+              }}
+            >
+              編集（矢印を追加）
+            </button>
+          </div>
           <div style={{ fontSize: 11, color: '#6c7086' }}>
             クリップボードに PNG コピー済み（Ctrl+V で貼り付け可）
           </div>

@@ -268,6 +268,63 @@ async fn overlay_region_selected(
     Ok(())
 }
 
+fn process_png_output(
+    app: &AppHandle,
+    data_url: &str,
+    filename: &str,
+    auto_save: bool,
+    save_dir: Option<&str>,
+    copy_to_clipboard: bool,
+) -> Result<Option<String>, String> {
+    let base64_part = data_url
+        .strip_prefix("data:image/png;base64,")
+        .ok_or_else(|| "invalid data url".to_string())?;
+    let png_bytes = STANDARD.decode(base64_part).map_err(|e| e.to_string())?;
+
+    if copy_to_clipboard {
+        let dyn_img =
+            screenshots::image::load_from_memory(&png_bytes).map_err(|e| e.to_string())?;
+        let rgba = dyn_img.to_rgba8();
+        let (w, h) = (rgba.width(), rgba.height());
+        let rgba_bytes: Vec<u8> = rgba.into_raw();
+        let img = tauri::image::Image::new(&rgba_bytes, w, h);
+        app.clipboard()
+            .write_image(&img)
+            .map_err(|e| e.to_string())?;
+    }
+
+    if auto_save {
+        match save_png_to_disk(app, save_dir, filename, &png_bytes) {
+            Ok(p) => Ok(Some(p)),
+            Err(e) => {
+                eprintln!("[output] save failed: {e}");
+                Ok(None)
+            }
+        }
+    } else {
+        Ok(None)
+    }
+}
+
+#[tauri::command]
+async fn save_annotated_image(
+    app: AppHandle,
+    data_url: String,
+    filename: String,
+    auto_save: bool,
+    save_dir: Option<String>,
+    copy_to_clipboard: bool,
+) -> Result<Option<String>, String> {
+    process_png_output(
+        &app,
+        &data_url,
+        &filename,
+        auto_save,
+        save_dir.as_deref(),
+        copy_to_clipboard,
+    )
+}
+
 fn save_png_to_disk(
     app: &AppHandle,
     save_dir: Option<&str>,
@@ -323,6 +380,7 @@ pub fn run() {
             overlay_bring_to_front,
             overlay_screenshot_loaded,
             overlay_painted,
+            save_annotated_image,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
