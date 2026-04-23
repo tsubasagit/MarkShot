@@ -1,6 +1,6 @@
 import React, { useEffect, useRef, useState } from 'react'
 import { Stage, Layer, Image as KonvaImage, Arrow, Rect, Line, Text } from 'react-konva'
-import type Konva from 'konva'
+import Konva from 'konva'
 import Toolbar, { PALETTE, STROKE_PRESETS } from './Toolbar'
 import {
   useAnnotation,
@@ -27,7 +27,13 @@ type Draft =
   | (MosaicAnnotation & { kind: 'mosaic' })
   | null
 
-const MOSAIC_FILL = 'rgba(15, 15, 26, 0.85)'
+export const MOSAIC_PRESETS: { label: string; value: number }[] = [
+  { label: '弱', value: 8 },
+  { label: '中', value: 16 },
+  { label: '強', value: 32 },
+]
+
+const MOSAIC_DEFAULT = 16
 
 const AnnotationEditor: React.FC<AnnotationEditorProps> = ({
   imageDataUrl,
@@ -38,6 +44,7 @@ const AnnotationEditor: React.FC<AnnotationEditorProps> = ({
   const [tool, setTool] = useState<ToolType>('arrow')
   const [color, setColor] = useState<string>(PALETTE[0])
   const [strokeWidth, setStrokeWidth] = useState<number>(STROKE_PRESETS[1].value)
+  const [mosaicSize, setMosaicSize] = useState<number>(MOSAIC_DEFAULT)
   const [selectedId, setSelectedId] = useState<string | null>(null)
   const [draft, setDraft] = useState<Draft>(null)
   const stageRef = useRef<Konva.Stage>(null)
@@ -53,18 +60,22 @@ const AnnotationEditor: React.FC<AnnotationEditorProps> = ({
     canRedo,
   } = useAnnotation()
 
+  const selectedAnn = annotations.find((a) => a.id === selectedId) ?? null
+  const showMosaicControls =
+    tool === 'mosaic' || (tool === 'select' && selectedAnn?.type === 'mosaic')
+  const activeMosaicSize =
+    selectedAnn?.type === 'mosaic' ? selectedAnn.pixelSize : mosaicSize
+
   useEffect(() => {
     const img = new Image()
     img.onload = () => setBgImage(img)
     img.src = imageDataUrl
   }, [imageDataUrl])
 
-  // Keyboard: Delete / Backspace to remove selected
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
       if ((e.key === 'Delete' || e.key === 'Backspace') && selectedId) {
         const target = e.target as HTMLElement | null
-        // 入力要素上では無効
         if (target && (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA')) return
         removeAnnotation(selectedId)
         setSelectedId(null)
@@ -74,7 +85,6 @@ const AnnotationEditor: React.FC<AnnotationEditorProps> = ({
     return () => window.removeEventListener('keydown', handler)
   }, [selectedId, removeAnnotation])
 
-  // Fit stage to image natural size, capped to viewport
   const stageSize = (() => {
     if (!bgImage) return { width: 800, height: 600 }
     const maxW = window.innerWidth - 40
@@ -86,11 +96,12 @@ const AnnotationEditor: React.FC<AnnotationEditorProps> = ({
     }
   })()
 
+  const stageScale = bgImage ? stageSize.width / bgImage.naturalWidth : 1
+
   const pointerPos = (e: Konva.KonvaEventObject<MouseEvent>) =>
     e.target.getStage()?.getPointerPosition() ?? null
 
   const handleMouseDown = (e: Konva.KonvaEventObject<MouseEvent>) => {
-    // Stage以外（既存ノード）を押したときは選択挙動に任せる
     if (tool === 'select') return
 
     if (tool === 'text') {
@@ -153,7 +164,7 @@ const AnnotationEditor: React.FC<AnnotationEditorProps> = ({
         y: pos.y,
         width: 0,
         height: 0,
-        pixelSize: 10,
+        pixelSize: mosaicSize,
       })
     }
   }
@@ -201,31 +212,45 @@ const AnnotationEditor: React.FC<AnnotationEditorProps> = ({
     setDraft(null)
   }
 
-  const applyDragEndOffset = (id: string, dx: number, dy: number) => {
-    const ann = annotations.find((a) => a.id === id)
-    if (!ann) return
-    if (ann.type === 'arrow') {
-      const [x1, y1, x2, y2] = ann.points
-      updateAnnotation(id, { points: [x1 + dx, y1 + dy, x2 + dx, y2 + dy] })
-    } else if (ann.type === 'pen') {
-      const pts = ann.points.map((v, i) => (i % 2 === 0 ? v + dx : v + dy))
-      updateAnnotation(id, { points: pts })
+  // arrow/pen は内部座標が points 配列に直接入っているため、
+  // ドラッグで node.x/y がそのまま「移動量」として使える。
+  // rect/mosaic/text は x/y プロパティに座標が入り、node.x/y は
+  // 「新しい絶対座標」が返るので、そのまま updateAnnotation する。
+  const handleDragEnd = (a: Annotation, e: Konva.KonvaEventObject<DragEvent>) => {
+    const node = e.target
+    if (a.type === 'arrow') {
+      const dx = node.x()
+      const dy = node.y()
+      node.position({ x: 0, y: 0 })
+      const [x1, y1, x2, y2] = a.points
+      updateAnnotation(a.id, { points: [x1 + dx, y1 + dy, x2 + dx, y2 + dy] })
+    } else if (a.type === 'pen') {
+      const dx = node.x()
+      const dy = node.y()
+      node.position({ x: 0, y: 0 })
+      const pts = a.points.map((v, i) => (i % 2 === 0 ? v + dx : v + dy))
+      updateAnnotation(a.id, { points: pts })
     } else if (
-      ann.type === 'rect' ||
-      ann.type === 'mosaic' ||
-      ann.type === 'text' ||
-      ann.type === 'ellipse' ||
-      ann.type === 'step' ||
-      ann.type === 'badge'
+      a.type === 'rect' ||
+      a.type === 'mosaic' ||
+      a.type === 'text'
     ) {
-      updateAnnotation(id, { x: (ann as { x: number }).x + dx, y: (ann as { y: number }).y + dy })
+      updateAnnotation(a.id, { x: node.x(), y: node.y() })
+    }
+  }
+
+  const handleMosaicSizeChange = (value: number) => {
+    // 選択中のモザイクがあればその annotation を更新、なければ既定値を更新
+    if (selectedAnn?.type === 'mosaic') {
+      updateAnnotation(selectedAnn.id, { pixelSize: value })
+    } else {
+      setMosaicSize(value)
     }
   }
 
   const handleDone = () => {
     const stage = stageRef.current
     if (!stage || !bgImage) return
-    // 選択ハイライトを消してから出力
     setSelectedId(null)
     requestAnimationFrame(() => {
       requestAnimationFrame(() => {
@@ -247,13 +272,7 @@ const AnnotationEditor: React.FC<AnnotationEditorProps> = ({
       draggable: isSelectTool,
       onClick: () => isSelectTool && setSelectedId(a.id),
       onTap: () => isSelectTool && setSelectedId(a.id),
-      onDragEnd: (e: Konva.KonvaEventObject<DragEvent>) => {
-        const node = e.target
-        const dx = node.x()
-        const dy = node.y()
-        node.position({ x: 0, y: 0 })
-        applyDragEndOffset(a.id, dx, dy)
-      },
+      onDragEnd: (e: Konva.KonvaEventObject<DragEvent>) => handleDragEnd(a, e),
       ...shadow,
     }
 
@@ -302,16 +321,14 @@ const AnnotationEditor: React.FC<AnnotationEditorProps> = ({
         />
       )
     }
-    if (a.type === 'mosaic') {
+    if (a.type === 'mosaic' && bgImage) {
       return (
-        <Rect
+        <MosaicPatch
           key={a.id}
-          x={a.x}
-          y={a.y}
-          width={a.width}
-          height={a.height}
-          fill={MOSAIC_FILL}
-          {...common}
+          ann={a}
+          bgImage={bgImage}
+          stageScale={stageScale}
+          commonProps={common}
         />
       )
     }
@@ -354,6 +371,9 @@ const AnnotationEditor: React.FC<AnnotationEditorProps> = ({
         onColorChange={setColor}
         strokeWidth={strokeWidth}
         onStrokeWidthChange={setStrokeWidth}
+        mosaicSize={activeMosaicSize}
+        onMosaicSizeChange={handleMosaicSizeChange}
+        showMosaicControls={showMosaicControls}
         onUndo={undo}
         onRedo={redo}
         canUndo={canUndo}
@@ -375,7 +395,6 @@ const AnnotationEditor: React.FC<AnnotationEditorProps> = ({
           width={stageSize.width}
           height={stageSize.height}
           onMouseDown={(e) => {
-            // 空の Stage 背景をクリックしたら選択解除
             if (isSelectTool && e.target === e.target.getStage()) {
               setSelectedId(null)
             }
@@ -398,7 +417,7 @@ const AnnotationEditor: React.FC<AnnotationEditorProps> = ({
               />
             )}
             {annotations.map(renderAnnotation)}
-            {draft && renderDraft(draft)}
+            {draft && renderDraft(draft, bgImage, stageScale)}
           </Layer>
         </Stage>
       </div>
@@ -406,7 +425,72 @@ const AnnotationEditor: React.FC<AnnotationEditorProps> = ({
   )
 }
 
-function renderDraft(d: Exclude<Draft, null>) {
+// モザイク表現: 該当領域だけを切り出した小画像を作成し、
+// Konva.Filters.Pixelate で pixelSize に応じたモザイクをかける。
+const MosaicPatch: React.FC<{
+  ann: MosaicAnnotation
+  bgImage: HTMLImageElement
+  stageScale: number
+  commonProps: Record<string, unknown>
+}> = ({ ann, bgImage, stageScale, commonProps }) => {
+  const imageRef = useRef<Konva.Image | null>(null)
+  const [patchImage, setPatchImage] = useState<HTMLImageElement | null>(null)
+
+  // ann の位置/サイズが変わったら対応する原寸領域を切り出してキャッシュ
+  useEffect(() => {
+    const w = Math.abs(ann.width)
+    const h = Math.abs(ann.height)
+    if (w < 1 || h < 1) return
+    const canvas = document.createElement('canvas')
+    canvas.width = Math.round(w / stageScale)
+    canvas.height = Math.round(h / stageScale)
+    const ctx = canvas.getContext('2d')
+    if (!ctx) return
+    ctx.drawImage(
+      bgImage,
+      ann.x / stageScale,
+      ann.y / stageScale,
+      w / stageScale,
+      h / stageScale,
+      0,
+      0,
+      canvas.width,
+      canvas.height,
+    )
+    const img = new Image()
+    img.onload = () => setPatchImage(img)
+    img.src = canvas.toDataURL()
+  }, [ann.x, ann.y, ann.width, ann.height, bgImage, stageScale])
+
+  // pixelSize と patchImage が揃った後に filter と cache を適用
+  useEffect(() => {
+    const node = imageRef.current
+    if (!node || !patchImage) return
+    node.filters([Konva.Filters.Pixelate])
+    node.pixelSize(Math.max(2, ann.pixelSize))
+    node.cache()
+    node.getLayer()?.batchDraw()
+  }, [patchImage, ann.pixelSize])
+
+  if (!patchImage) return null
+  return (
+    <KonvaImage
+      ref={imageRef}
+      x={ann.x}
+      y={ann.y}
+      width={ann.width}
+      height={ann.height}
+      image={patchImage}
+      {...commonProps}
+    />
+  )
+}
+
+function renderDraft(
+  d: Exclude<Draft, null>,
+  bgImage: HTMLImageElement | null,
+  stageScale: number,
+) {
   if (d.kind === 'arrow') {
     return (
       <Arrow
@@ -449,22 +533,30 @@ function renderDraft(d: Exclude<Draft, null>) {
     )
   }
   if (d.kind === 'mosaic') {
+    const normalized = normalizeRect(d)
+    if (!bgImage || Math.abs(normalized.width) < 2 || Math.abs(normalized.height) < 2) {
+      return null
+    }
     return (
-      <Rect
-        x={d.x}
-        y={d.y}
-        width={d.width}
-        height={d.height}
-        fill={MOSAIC_FILL}
-        opacity={0.6}
-        dash={[6, 6]}
+      <MosaicPatch
+        ann={{
+          type: 'mosaic',
+          id: d.id,
+          x: normalized.x,
+          y: normalized.y,
+          width: normalized.width,
+          height: normalized.height,
+          pixelSize: d.pixelSize,
+        }}
+        bgImage={bgImage}
+        stageScale={stageScale}
+        commonProps={{ opacity: 0.85, listening: false }}
       />
     )
   }
   return null
 }
 
-// ドラッグで負の幅になった矩形を正の幅に正規化（mosaic/rect 共通）
 function normalizeRect<T extends { x: number; y: number; width: number; height: number }>(r: T): T {
   const x = r.width < 0 ? r.x + r.width : r.x
   const y = r.height < 0 ? r.y + r.height : r.y

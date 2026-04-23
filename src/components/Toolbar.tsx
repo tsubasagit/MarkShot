@@ -8,6 +8,9 @@ interface ToolbarProps {
   onColorChange: (c: string) => void
   strokeWidth: number
   onStrokeWidthChange: (w: number) => void
+  mosaicSize: number
+  onMosaicSizeChange: (v: number) => void
+  showMosaicControls: boolean
   onUndo: () => void
   onRedo: () => void
   canUndo: boolean
@@ -30,6 +33,12 @@ export const STROKE_PRESETS: { label: string; value: number }[] = [
   { label: '細', value: 2 },
   { label: '中', value: 4 },
   { label: '太', value: 8 },
+]
+
+export const MOSAIC_LEVELS: { label: string; value: number; cells: number }[] = [
+  { label: '弱', value: 8, cells: 4 },
+  { label: '中', value: 16, cells: 3 },
+  { label: '強', value: 32, cells: 2 },
 ]
 
 const TOOLS: { id: ToolType; label: string }[] = [
@@ -132,6 +141,33 @@ const StrokeIcon: React.FC<{ width: number; size?: number }> = ({ width, size = 
   </svg>
 )
 
+// モザイク粗さ: cells 数でグリッドの荒さを表現（cells 少ないほど粗い = 強い）
+const MosaicLevelIcon: React.FC<{ cells: number; size?: number }> = ({ cells, size = 18 }) => {
+  const pad = 2
+  const cellSize = (size - pad * 2) / cells
+  const rects: React.ReactNode[] = []
+  for (let i = 0; i < cells; i++) {
+    for (let j = 0; j < cells; j++) {
+      rects.push(
+        <rect
+          key={`${i}-${j}`}
+          x={pad + j * cellSize}
+          y={pad + i * cellSize}
+          width={cellSize - 0.5}
+          height={cellSize - 0.5}
+          fill="currentColor"
+          opacity={(i + j) % 2 === 0 ? 0.95 : 0.45}
+        />,
+      )
+    }
+  }
+  return (
+    <svg width={size} height={size} viewBox={`0 0 ${size} ${size}`}>
+      {rects}
+    </svg>
+  )
+}
+
 const styles: Record<string, React.CSSProperties> = {
   bar: {
     display: 'flex',
@@ -169,19 +205,6 @@ const styles: Record<string, React.CSSProperties> = {
     background: '#00FFFF',
     color: '#0f0f1a',
     borderColor: '#00FFFF',
-  },
-  strokeBtn: {
-    width: 32,
-    height: 32,
-    padding: 0,
-    background: '#2a2a4a',
-    color: '#e0e0f0',
-    border: '1px solid #2a2a4a',
-    borderRadius: 6,
-    cursor: 'pointer',
-    display: 'inline-flex',
-    alignItems: 'center',
-    justifyContent: 'center',
   },
   swatch: {
     width: 22,
@@ -222,6 +245,9 @@ const Toolbar: React.FC<ToolbarProps> = ({
   onColorChange,
   strokeWidth,
   onStrokeWidthChange,
+  mosaicSize,
+  onMosaicSizeChange,
+  showMosaicControls,
   onUndo,
   onRedo,
   canUndo,
@@ -245,35 +271,53 @@ const Toolbar: React.FC<ToolbarProps> = ({
         ))}
       </div>
 
-      <div style={styles.group}>
-        {PALETTE.map((c) => (
-          <button
-            key={c}
-            aria-label={`color ${c}`}
-            title={c}
-            style={{
-              ...styles.swatch,
-              background: c,
-              ...(color === c ? styles.swatchActive : null),
-            }}
-            onClick={() => onColorChange(c)}
-          />
-        ))}
-      </div>
+      {!showMosaicControls && (
+        <div style={styles.group}>
+          {PALETTE.map((c) => (
+            <button
+              key={c}
+              aria-label={`color ${c}`}
+              title={c}
+              style={{
+                ...styles.swatch,
+                background: c,
+                ...(color === c ? styles.swatchActive : null),
+              }}
+              onClick={() => onColorChange(c)}
+            />
+          ))}
+        </div>
+      )}
 
-      <div style={styles.group}>
-        {STROKE_PRESETS.map((p) => (
-          <button
-            key={p.value}
-            style={{ ...styles.strokeBtn, ...(strokeWidth === p.value ? styles.activeIcon : null) }}
-            onClick={() => onStrokeWidthChange(p.value)}
-            title={`${p.label}（${p.value}px）`}
-            aria-label={`線の太さ ${p.label}`}
-          >
-            <StrokeIcon width={p.value} />
-          </button>
-        ))}
-      </div>
+      {showMosaicControls ? (
+        <div style={styles.group}>
+          {MOSAIC_LEVELS.map((p) => (
+            <button
+              key={p.value}
+              style={{ ...styles.iconBtn, ...(mosaicSize === p.value ? styles.activeIcon : null) }}
+              onClick={() => onMosaicSizeChange(p.value)}
+              title={`モザイク ${p.label}（${p.value}px）`}
+              aria-label={`モザイク ${p.label}`}
+            >
+              <MosaicLevelIcon cells={p.cells} />
+            </button>
+          ))}
+        </div>
+      ) : (
+        <div style={styles.group}>
+          {STROKE_PRESETS.map((p) => (
+            <button
+              key={p.value}
+              style={{ ...styles.iconBtn, ...(strokeWidth === p.value ? styles.activeIcon : null) }}
+              onClick={() => onStrokeWidthChange(p.value)}
+              title={`${p.label}（${p.value}px）`}
+              aria-label={`線の太さ ${p.label}`}
+            >
+              <StrokeIcon width={p.value} />
+            </button>
+          ))}
+        </div>
+      )}
 
       <div style={styles.group}>
         <button
