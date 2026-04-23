@@ -16,9 +16,9 @@ interface ToolbarProps {
   onCancel: () => void
 }
 
-// デフォルトはV1踏襲のショッキングピンク #FF0055
+// デフォルトは鮮やかなピンク #ed218b
 export const PALETTE: string[] = [
-  '#FF0055', // ショッキングピンク（既定）
+  '#ed218b', // ピンク（既定）
   '#ff1744', // 赤
   '#2979ff', // 青
   '#00e676', // 緑
