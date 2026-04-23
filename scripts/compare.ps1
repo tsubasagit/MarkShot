@@ -31,7 +31,7 @@ function Format-Delta($v1, $v2, $unit = "") {
     $pct = if ($v1 -ne 0) { [math]::Round(($delta / $v1) * 100, 1) } else { 0 }
     $sign = if ($delta -gt 0) { "+" } else { "" }
     $color = if ($delta -lt 0) { "Green" } elseif ($delta -gt 0) { "Red" } else { "Gray" }
-    return @{ text = "$sign$delta$unit ($sign$pct%)"; color = $color }
+    return @{ text = "$sign$delta$unit ($sign${pct}%)"; color = $color }
 }
 
 Write-Host ""
