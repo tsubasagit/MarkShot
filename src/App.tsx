@@ -185,6 +185,24 @@ function Placeholder() {
           onNewCapture={handleNewCapture}
           disabled={busy}
         />
+        {captured && (
+          <button
+            onClick={() => setEditing(true)}
+            title="編集（矢印・テキスト・枠・ペン・モザイク）"
+            style={{
+              padding: '6px 14px',
+              background: '#00FFFF',
+              color: '#0f0f1a',
+              border: 'none',
+              borderRadius: 6,
+              cursor: 'pointer',
+              fontSize: 12,
+              fontWeight: 600,
+            }}
+          >
+            編集
+          </button>
+        )}
         <button
           onClick={() => setSettingsOpen(true)}
           title="設定"
@@ -226,23 +244,6 @@ function Placeholder() {
             alt="captured"
             style={{ maxWidth: '100%', maxHeight: '100%', border: '1px solid #2a2a4a', borderRadius: 4 }}
           />
-          <div style={{ display: 'flex', gap: 8 }}>
-            <button
-              onClick={() => setEditing(true)}
-              style={{
-                padding: '6px 14px',
-                background: '#00FFFF',
-                color: '#0f0f1a',
-                border: 'none',
-                borderRadius: 6,
-                cursor: 'pointer',
-                fontSize: 12,
-                fontWeight: 600,
-              }}
-            >
-              編集（矢印・テキスト・枠・ペン・モザイク）
-            </button>
-          </div>
           <div style={{ fontSize: 11, color: '#6c7086' }}>
             クリップボードに PNG コピー済み（Ctrl+V で貼り付け可）
           </div>
