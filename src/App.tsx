@@ -240,7 +240,7 @@ function Placeholder() {
                 fontWeight: 600,
               }}
             >
-              編集（矢印を追加）
+              編集（矢印・テキスト・枠・ペン・モザイク）
             </button>
           </div>
           <div style={{ fontSize: 11, color: '#6c7086' }}>
