@@ -160,10 +160,7 @@ const SettingsPanel: React.FC<SettingsPanelProps> = ({ onClose }) => {
   return (
     <div style={s.overlay} onClick={(e) => e.target === e.currentTarget && onClose()}>
       <div style={s.panel}>
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-          <div style={s.title}>設定</div>
-          <button style={s.btn} onClick={onClose}>閉じる</button>
-        </div>
+        <div style={s.title}>設定</div>
 
         <div style={s.section}>
           <div style={s.sectionTitle}>キャプチャ</div>
