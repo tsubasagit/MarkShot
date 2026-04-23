@@ -217,24 +217,33 @@ const SettingsPanel: React.FC<SettingsPanelProps> = ({ onClose }) => {
 
         <div style={s.section}>
           <div style={s.sectionTitle}>アプリ情報</div>
-          <div style={{ fontSize: 13, color: '#b0b0d0', lineHeight: 1.8 }}>
-            <div><span style={{ color: '#6c7086' }}>バージョン：</span>v2.0.0</div>
-            <div><span style={{ color: '#6c7086' }}>作成者：</span>宮崎翼</div>
-            <div>
-              <span style={{ color: '#6c7086' }}>お問い合わせ：</span>
-              <a
-                href="https://apptalenthub.co.jp"
-                style={{ color: '#8ab4c8', textDecoration: 'underline', cursor: 'pointer' }}
-                onClick={(e) => {
-                  e.preventDefault()
-                  openExternal('https://apptalenthub.co.jp').catch((err) =>
-                    console.error('openExternal failed', err),
-                  )
-                }}
-              >
-                AppTalentHub
-              </a>
+          <div style={{ display: 'flex', gap: 16, alignItems: 'center' }}>
+            <div style={{ fontSize: 13, color: '#b0b0d0', lineHeight: 1.8, flex: 1 }}>
+              <div><span style={{ color: '#6c7086' }}>バージョン：</span>v2.0.0</div>
+              <div><span style={{ color: '#6c7086' }}>作成者：</span>宮崎翼</div>
+              <div>
+                <span style={{ color: '#6c7086' }}>お問い合わせ：</span>
+                <a
+                  href="https://apptalenthub.co.jp"
+                  style={{ color: '#8ab4c8', textDecoration: 'underline', cursor: 'pointer' }}
+                  onClick={(e) => {
+                    e.preventDefault()
+                    openExternal('https://apptalenthub.co.jp').catch((err) =>
+                      console.error('openExternal failed', err),
+                    )
+                  }}
+                >
+                  AppTalentHub
+                </a>
+              </div>
             </div>
+            <img
+              src="/rabbit.png"
+              alt="ラビットくん"
+              width={72}
+              style={{ height: 'auto', flexShrink: 0, userSelect: 'none' }}
+              draggable={false}
+            />
           </div>
         </div>
 
