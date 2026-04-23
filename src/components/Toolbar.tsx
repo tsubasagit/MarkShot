@@ -118,6 +118,20 @@ const RedoIcon: React.FC<IconProps> = ({ size = 16 }) => (
   </svg>
 )
 
+const StrokeIcon: React.FC<{ width: number; size?: number }> = ({ width, size = 20 }) => (
+  <svg width={size} height={size} viewBox="0 0 24 24">
+    <line
+      x1="3"
+      y1="12"
+      x2="21"
+      y2="12"
+      stroke="currentColor"
+      strokeWidth={width}
+      strokeLinecap="round"
+    />
+  </svg>
+)
+
 const styles: Record<string, React.CSSProperties> = {
   bar: {
     display: 'flex',
@@ -157,16 +171,17 @@ const styles: Record<string, React.CSSProperties> = {
     borderColor: '#00FFFF',
   },
   strokeBtn: {
-    minWidth: 32,
+    width: 32,
     height: 32,
-    padding: '0 8px',
+    padding: 0,
     background: '#2a2a4a',
     color: '#e0e0f0',
     border: '1px solid #2a2a4a',
     borderRadius: 6,
     cursor: 'pointer',
-    fontSize: 12,
-    fontWeight: 600,
+    display: 'inline-flex',
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   swatch: {
     width: 22,
@@ -252,9 +267,10 @@ const Toolbar: React.FC<ToolbarProps> = ({
             key={p.value}
             style={{ ...styles.strokeBtn, ...(strokeWidth === p.value ? styles.activeIcon : null) }}
             onClick={() => onStrokeWidthChange(p.value)}
-            title={`太さ: ${p.value}px`}
+            title={`${p.label}（${p.value}px）`}
+            aria-label={`線の太さ ${p.label}`}
           >
-            {p.label}
+            <StrokeIcon width={p.value} />
           </button>
         ))}
       </div>
