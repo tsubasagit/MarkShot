@@ -1,6 +1,6 @@
 [package]
 name = "markshot"
-version = "2.0.0"
+version = "2.0.1"
 description = "スクリーンショット&注釈ツール (Tauri 2)"
 authors = ["AppTalentHub"]
 edition = "2021"
@@ -29,6 +29,6 @@ base64 = "0.22"
 [profile.release]
 panic = "abort"
 codegen-units = 1
-lto = true
+lto = "thin"
 opt-level = "s"
 strip = true

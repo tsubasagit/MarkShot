@@ -69,6 +69,18 @@ function Placeholder() {
   const [error, setError] = useState<string | null>(null)
   const [settingsOpen, setSettingsOpen] = useState(false)
   const [editing, setEditing] = useState(false)
+  const [pathCopied, setPathCopied] = useState(false)
+
+  const handleCopyPath = async () => {
+    if (!savedPath) return
+    try {
+      await navigator.clipboard.writeText(savedPath)
+      setPathCopied(true)
+      setTimeout(() => setPathCopied(false), 1500)
+    } catch (e) {
+      console.error('copy path failed', e)
+    }
+  }
 
   useEffect(() => {
     let unlistenComplete: UnlistenFn | null = null
@@ -248,8 +260,50 @@ function Placeholder() {
             クリップボードに PNG コピー済み（Ctrl+V で貼り付け可）
           </div>
           {savedPath && (
-            <div style={{ fontSize: 11, color: '#6c7086', wordBreak: 'break-all', maxWidth: '80%', textAlign: 'center' }}>
-              保存先: {savedPath}
+            <div
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: 8,
+                maxWidth: '90%',
+                flexWrap: 'wrap',
+                justifyContent: 'center',
+              }}
+            >
+              <div
+                style={{
+                  fontSize: 11,
+                  color: '#6c7086',
+                  wordBreak: 'break-all',
+                  textAlign: 'center',
+                }}
+              >
+                保存先: {savedPath}
+              </div>
+              <button
+                onClick={handleCopyPath}
+                title="保存先パスをクリップボードにコピー"
+                style={{
+                  padding: '4px 10px',
+                  background: pathCopied ? '#22c55e' : '#1a1a2e',
+                  color: pathCopied ? '#0f0f1a' : '#b0b0d0',
+                  border: '1px solid #2a2a4a',
+                  borderRadius: 4,
+                  cursor: 'pointer',
+                  fontSize: 11,
+                  fontWeight: 600,
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  gap: 4,
+                  transition: 'background 0.15s, color 0.15s',
+                }}
+              >
+                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <rect x="9" y="9" width="13" height="13" rx="2" ry="2" />
+                  <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1" />
+                </svg>
+                {pathCopied ? 'コピー済み' : 'パスをコピー'}
+              </button>
             </div>
           )}
         </div>
