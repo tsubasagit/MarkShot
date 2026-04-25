@@ -62,7 +62,7 @@ Windows 付属の Snipping Tool（~30MB）より軽く、Electron 時代の "重
 
 ## インストール
 
-[Releases](https://github.com/tsubasagit/MarkShot/releases) から最新の `MarkShot_2.0.0_arm64-setup.exe` をダウンロードして実行してください。
+[Releases](https://github.com/tsubasagit/MarkShot/releases/latest) から最新の `MarkShot_<version>_arm64-setup.exe` をダウンロードして実行してください。
 
 > v2 は **Windows 11 ARM64** ビルドを配布します（Surface Laptop 7 等）。x64 ビルドが必要な場合は Issue でリクエストしてください。
 
