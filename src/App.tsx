@@ -285,8 +285,8 @@ function Placeholder() {
                 title="保存先パスをクリップボードにコピー"
                 style={{
                   padding: '4px 10px',
-                  background: pathCopied ? '#22c55e' : '#1a1a2e',
-                  color: pathCopied ? '#0f0f1a' : '#b0b0d0',
+                  background: pathCopied ? '#22c55e' : '#538bb0',
+                  color: pathCopied ? '#0f0f1a' : '#ffffff',
                   border: '1px solid #2a2a4a',
                   borderRadius: 4,
                   cursor: 'pointer',

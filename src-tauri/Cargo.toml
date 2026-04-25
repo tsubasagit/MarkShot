@@ -1,6 +1,6 @@
 [package]
 name = "markshot"
-version = "2.0.1"
+version = "2.0.2"
 description = "スクリーンショット&注釈ツール (Tauri 2)"
 authors = ["AppTalentHub"]
 edition = "2021"
