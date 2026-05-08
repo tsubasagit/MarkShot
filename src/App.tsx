@@ -124,24 +124,51 @@ function Placeholder() {
     }
   }, [])
 
-  const handleEditDone = async (editedDataUrl: string) => {
+  const saveEditedImage = async (editedDataUrl: string): Promise<string | null> => {
     const settings = await loadSettings().catch(() => DEFAULT_SETTINGS)
     const now = new Date()
     const pad = (n: number) => String(n).padStart(2, '0')
     const filename = `markshot_edited_${now.getFullYear()}${pad(now.getMonth() + 1)}${pad(now.getDate())}_${pad(now.getHours())}${pad(now.getMinutes())}${pad(now.getSeconds())}.png`
+    return await invoke<string | null>('save_annotated_image', {
+      dataUrl: editedDataUrl,
+      filename,
+      autoSave: settings.autoSave,
+      saveDir: settings.saveDir,
+      copyToClipboard: settings.copyToClipboard,
+    })
+  }
+
+  const handleEditDone = async (editedDataUrl: string) => {
     try {
-      await invoke<string | null>('save_annotated_image', {
-        dataUrl: editedDataUrl,
-        filename,
-        autoSave: settings.autoSave,
-        saveDir: settings.saveDir,
-        copyToClipboard: settings.copyToClipboard,
-      })
+      await saveEditedImage(editedDataUrl)
       await getCurrentWindow().close()
     } catch (e) {
       console.error('save_annotated_image failed', e)
       setError(String(e))
       setEditing(false)
+    }
+  }
+
+  const handleNewFromEditor = async (mode: 'screenshot' | 'gif', editedDataUrl: string) => {
+    if (mode === 'gif') {
+      setError('GIF録画は Phase 2 で復活予定です')
+      return
+    }
+    try {
+      await saveEditedImage(editedDataUrl)
+    } catch (e) {
+      console.error('auto-save before new capture failed', e)
+    }
+    setEditing(false)
+    setCaptured(null)
+    setSavedPath(null)
+    setError(null)
+    setBusy(true)
+    try {
+      await invoke('start_region_capture')
+    } catch (e) {
+      setError(String(e))
+      setBusy(false)
     }
   }
 
@@ -165,8 +192,10 @@ function Placeholder() {
     return (
       <AnnotationEditor
         imageDataUrl={captured}
+        savedPath={savedPath}
         onDone={handleEditDone}
         onCancel={() => setEditing(false)}
+        onNew={(editedDataUrl) => handleNewFromEditor(captureMode, editedDataUrl)}
       />
     )
   }

@@ -16,8 +16,10 @@ import {
 
 interface AnnotationEditorProps {
   imageDataUrl: string
+  savedPath: string | null
   onDone: (editedDataUrl: string) => void
   onCancel: () => void
+  onNew: (editedDataUrl: string) => void
 }
 
 type Draft =
@@ -37,8 +39,10 @@ const MOSAIC_DEFAULT = 16
 
 const AnnotationEditor: React.FC<AnnotationEditorProps> = ({
   imageDataUrl,
+  savedPath,
   onDone,
   onCancel,
+  onNew,
 }) => {
   const [bgImage, setBgImage] = useState<HTMLImageElement | null>(null)
   const [tool, setTool] = useState<ToolType>('arrow')
@@ -47,7 +51,19 @@ const AnnotationEditor: React.FC<AnnotationEditorProps> = ({
   const [mosaicSize, setMosaicSize] = useState<number>(MOSAIC_DEFAULT)
   const [selectedId, setSelectedId] = useState<string | null>(null)
   const [draft, setDraft] = useState<Draft>(null)
+  const [pathCopied, setPathCopied] = useState(false)
   const stageRef = useRef<Konva.Stage>(null)
+
+  const handleCopyPath = async () => {
+    if (!savedPath) return
+    try {
+      await navigator.clipboard.writeText(savedPath)
+      setPathCopied(true)
+      setTimeout(() => setPathCopied(false), 1500)
+    } catch (e) {
+      console.error('copy path failed', e)
+    }
+  }
 
   const {
     annotations,
@@ -248,7 +264,7 @@ const AnnotationEditor: React.FC<AnnotationEditorProps> = ({
     }
   }
 
-  const handleDone = () => {
+  const exportEdited = (callback: (dataUrl: string) => void) => {
     const stage = stageRef.current
     if (!stage || !bgImage) return
     setSelectedId(null)
@@ -256,10 +272,13 @@ const AnnotationEditor: React.FC<AnnotationEditorProps> = ({
       requestAnimationFrame(() => {
         const pixelRatio = bgImage.naturalWidth / stageSize.width
         const dataUrl = stage.toDataURL({ mimeType: 'image/png', pixelRatio })
-        onDone(dataUrl)
+        callback(dataUrl)
       })
     })
   }
+
+  const handleDone = () => exportEdited(onDone)
+  const handleNew = () => exportEdited(onNew)
 
   const isSelectTool = tool === 'select'
 
@@ -380,14 +399,17 @@ const AnnotationEditor: React.FC<AnnotationEditorProps> = ({
         canRedo={canRedo}
         onDone={handleDone}
         onCancel={onCancel}
+        onNew={handleNew}
       />
       <div
         style={{
           flex: 1,
           display: 'flex',
+          flexDirection: 'column',
           alignItems: 'center',
           justifyContent: 'center',
           overflow: 'auto',
+          gap: 6,
         }}
       >
         <Stage
@@ -420,6 +442,53 @@ const AnnotationEditor: React.FC<AnnotationEditorProps> = ({
             {draft && renderDraft(draft, bgImage, stageScale)}
           </Layer>
         </Stage>
+        {savedPath && (
+          <div
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              gap: 8,
+              maxWidth: '90%',
+              flexWrap: 'wrap',
+              justifyContent: 'center',
+            }}
+          >
+            <div
+              style={{
+                fontSize: 11,
+                color: '#6c7086',
+                wordBreak: 'break-all',
+                textAlign: 'center',
+              }}
+            >
+              保存先: {savedPath}
+            </div>
+            <button
+              onClick={handleCopyPath}
+              title="保存先パスをクリップボードにコピー"
+              style={{
+                padding: '4px 10px',
+                background: pathCopied ? '#22c55e' : '#538bb0',
+                color: pathCopied ? '#0f0f1a' : '#ffffff',
+                border: '1px solid #2a2a4a',
+                borderRadius: 4,
+                cursor: 'pointer',
+                fontSize: 11,
+                fontWeight: 600,
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: 4,
+                transition: 'background 0.15s, color 0.15s',
+              }}
+            >
+              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <rect x="9" y="9" width="13" height="13" rx="2" ry="2" />
+                <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1" />
+              </svg>
+              {pathCopied ? 'コピー済み' : 'パスをコピー'}
+            </button>
+          </div>
+        )}
       </div>
     </div>
   )
