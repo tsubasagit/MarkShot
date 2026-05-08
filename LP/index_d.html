@@ -596,6 +596,20 @@
             color: rgba(255, 255, 255, 0.35);
         }
 
+        .install-warning {
+            margin-top: 12px;
+            max-width: 640px;
+            margin-left: auto;
+            margin-right: auto;
+            font-size: 0.78rem;
+            line-height: 1.6;
+            color: rgba(255, 255, 255, 0.55);
+            border: 1px solid rgba(255, 255, 255, 0.15);
+            border-radius: 6px;
+            padding: 10px 14px;
+            background: rgba(255, 255, 255, 0.04);
+        }
+
         /* --- CONTACT --- */
         .contact-section {
             padding: 80px 0;
@@ -884,7 +898,7 @@
                 矢印・テキスト・枠・ペン・モザイクで、伝わる1枚を数秒で。
             </p>
             <div class="hero-actions">
-                <a href="https://github.com/tsubasagit/MarkShot/releases/latest/download/MarkShot_2.0.2_arm64-setup.exe" class="btn-primary" onclick="gtag('event','download_click',{event_category:'download',event_label:this.closest('section').className})">
+                <a href="https://github.com/tsubasagit/MarkShot/releases/latest/download/MarkShot_2.0.3_arm64-setup.exe" class="btn-primary" onclick="gtag('event','download_click',{event_category:'download',event_label:this.closest('section').className})">
                     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"
                         stroke-linejoin="round">
                         <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
@@ -902,6 +916,9 @@
                 </a>
             </div>
             <p class="hero-note">Windows 11 ARM64 対応 / 無料 / オープンソース</p>
+            <p class="install-warning">
+                ※ 現在、コスト削減のためコード署名証明書を発行していません。インストール時に「<strong>発行元: 不明</strong>」または SmartScreen の警告が表示される場合がありますが、そのままインストールして問題ありません。ソースコードは <a href="https://github.com/tsubasagit/MarkShot" target="_blank" rel="noopener" style="color: inherit; text-decoration: underline;">GitHub</a> で公開しています。
+            </p>
 
             <div class="hero-screenshot">
                 <img src="../img/markshot1.png" alt="MarkShot ホーム画面" />
@@ -917,6 +934,11 @@
                 <h2>お知らせ</h2>
             </div>
             <div class="news-list">
+                <div class="news-item">
+                    <span class="news-date">2026-05-08</span>
+                    <span class="news-tag feature">改善</span>
+                    <span class="news-text">v2.0.3 — スクリーンショット撮影後に編集画面へ自動遷移。ワンクリック削減で「撮る → 編集」の動線を高速化。</span>
+                </div>
                 <div class="news-item">
                     <span class="news-date">2026-04-26</span>
                     <span class="news-tag feature">改善</span>
@@ -1213,7 +1235,7 @@
         <div class="container">
             <h2>今すぐ<span class="accent">MarkShot v2.0</span>を始めよう</h2>
             <p>5.79MB、インストール 10 秒。軽すぎて忘れます。</p>
-            <a href="https://github.com/tsubasagit/MarkShot/releases/latest/download/MarkShot_2.0.2_arm64-setup.exe" class="btn-primary" onclick="gtag('event','download_click',{event_category:'download',event_label:this.closest('section').className})">
+            <a href="https://github.com/tsubasagit/MarkShot/releases/latest/download/MarkShot_2.0.3_arm64-setup.exe" class="btn-primary" onclick="gtag('event','download_click',{event_category:'download',event_label:this.closest('section').className})">
                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"
                     stroke-linejoin="round" width="20" height="20">
                     <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
@@ -1222,7 +1244,10 @@
                 </svg>
                 無料ダウンロード
             </a>
-            <p class="cta-note">Windows 11 ARM64 対応 | v2.0.2</p>
+            <p class="cta-note">Windows 11 ARM64 対応 | v2.0.3</p>
+            <p class="install-warning">
+                ※ 現在、コスト削減のためコード署名証明書を発行していません。インストール時に「<strong>発行元: 不明</strong>」または SmartScreen の警告が表示される場合がありますが、そのままインストールして問題ありません。ソースコードは <a href="https://github.com/tsubasagit/MarkShot" target="_blank" rel="noopener" style="color: inherit; text-decoration: underline;">GitHub</a> で公開しています。
+            </p>
         </div>
     </section>
 

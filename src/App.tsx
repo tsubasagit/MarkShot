@@ -92,6 +92,7 @@ function Placeholder() {
         setSavedPath(e.payload.savedPath)
         setBusy(false)
         setError(null)
+        setEditing(true)
       })
       unlistenCancelled = await listen('capture:cancelled', () => {
         setBusy(false)
