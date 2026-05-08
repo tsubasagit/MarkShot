@@ -193,9 +193,11 @@ function Placeholder() {
       <AnnotationEditor
         imageDataUrl={captured}
         savedPath={savedPath}
+        captureMode={captureMode}
+        onCaptureModeChange={setCaptureMode}
         onDone={handleEditDone}
         onCancel={() => setEditing(false)}
-        onNew={(editedDataUrl) => handleNewFromEditor(captureMode, editedDataUrl)}
+        onNew={(mode, editedDataUrl) => handleNewFromEditor(mode, editedDataUrl)}
       />
     )
   }

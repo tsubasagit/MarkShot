@@ -2,6 +2,7 @@ import React, { useEffect, useRef, useState } from 'react'
 import { Stage, Layer, Image as KonvaImage, Arrow, Rect, Line, Text } from 'react-konva'
 import Konva from 'konva'
 import Toolbar, { PALETTE, STROKE_PRESETS } from './Toolbar'
+import type { CaptureMode } from './CaptureBar'
 import {
   useAnnotation,
   generateId,
@@ -17,9 +18,11 @@ import {
 interface AnnotationEditorProps {
   imageDataUrl: string
   savedPath: string | null
+  captureMode: CaptureMode
+  onCaptureModeChange: (mode: CaptureMode) => void
   onDone: (editedDataUrl: string) => void
   onCancel: () => void
-  onNew: (editedDataUrl: string) => void
+  onNew: (mode: CaptureMode, editedDataUrl: string) => void
 }
 
 type Draft =
@@ -40,6 +43,8 @@ const MOSAIC_DEFAULT = 16
 const AnnotationEditor: React.FC<AnnotationEditorProps> = ({
   imageDataUrl,
   savedPath,
+  captureMode,
+  onCaptureModeChange,
   onDone,
   onCancel,
   onNew,
@@ -278,7 +283,8 @@ const AnnotationEditor: React.FC<AnnotationEditorProps> = ({
   }
 
   const handleDone = () => exportEdited(onDone)
-  const handleNew = () => exportEdited(onNew)
+  const handleNew = (mode?: CaptureMode) =>
+    exportEdited((dataUrl) => onNew(mode ?? captureMode, dataUrl))
 
   const isSelectTool = tool === 'select'
 
@@ -399,6 +405,8 @@ const AnnotationEditor: React.FC<AnnotationEditorProps> = ({
         canRedo={canRedo}
         onDone={handleDone}
         onCancel={onCancel}
+        captureMode={captureMode}
+        onCaptureModeChange={onCaptureModeChange}
         onNew={handleNew}
       />
       <div

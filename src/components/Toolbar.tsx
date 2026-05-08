@@ -1,5 +1,6 @@
 import React from 'react'
 import type { ToolType } from '../hooks/useAnnotation'
+import CaptureBar, { type CaptureMode } from './CaptureBar'
 
 interface ToolbarProps {
   tool: ToolType
@@ -17,7 +18,9 @@ interface ToolbarProps {
   canRedo: boolean
   onDone: () => void
   onCancel: () => void
-  onNew: () => void
+  captureMode: CaptureMode
+  onCaptureModeChange: (mode: CaptureMode) => void
+  onNew: (mode?: CaptureMode) => void
 }
 
 // デフォルトは鮮やかなピンク #ed218b
@@ -237,19 +240,6 @@ const styles: Record<string, React.CSSProperties> = {
     fontSize: 12,
     fontWeight: 600,
   },
-  newBtn: {
-    padding: '6px 14px',
-    background: '#1a1a2e',
-    color: '#e0e0f0',
-    border: '1px solid #2a2a4a',
-    borderRadius: 6,
-    cursor: 'pointer',
-    fontSize: 12,
-    fontWeight: 600,
-    display: 'inline-flex',
-    alignItems: 'center',
-    gap: 4,
-  },
 }
 
 const Toolbar: React.FC<ToolbarProps> = ({
@@ -268,10 +258,19 @@ const Toolbar: React.FC<ToolbarProps> = ({
   canRedo,
   onDone,
   onCancel,
+  captureMode,
+  onCaptureModeChange,
   onNew,
 }) => {
   return (
     <div style={styles.bar}>
+      <div style={styles.group}>
+        <CaptureBar
+          captureMode={captureMode}
+          onCaptureModeChange={onCaptureModeChange}
+          onNewCapture={onNew}
+        />
+      </div>
       <div style={styles.group}>
         {TOOLS.map((t) => (
           <button
@@ -357,17 +356,6 @@ const Toolbar: React.FC<ToolbarProps> = ({
 
       <div style={styles.spacer} />
 
-      <button
-        style={styles.newBtn}
-        onClick={onNew}
-        title="現在の編集を保存して新規キャプチャを開始"
-      >
-        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-          <line x1="12" y1="5" x2="12" y2="19" />
-          <line x1="5" y1="12" x2="19" y2="12" />
-        </svg>
-        新規
-      </button>
       <button style={styles.cancelBtn} onClick={onCancel}>
         キャンセル
       </button>
