@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react'
 import { invoke } from '@tauri-apps/api/core'
 import { listen, type UnlistenFn } from '@tauri-apps/api/event'
+import { getCurrentWindow } from '@tauri-apps/api/window'
 import { register, unregister, isRegistered } from '@tauri-apps/plugin-global-shortcut'
 import RegionSelector from './components/RegionSelector'
 import RecordingOverlay from './components/RecordingOverlay'
@@ -129,19 +130,17 @@ function Placeholder() {
     const pad = (n: number) => String(n).padStart(2, '0')
     const filename = `markshot_edited_${now.getFullYear()}${pad(now.getMonth() + 1)}${pad(now.getDate())}_${pad(now.getHours())}${pad(now.getMinutes())}${pad(now.getSeconds())}.png`
     try {
-      const saved = await invoke<string | null>('save_annotated_image', {
+      await invoke<string | null>('save_annotated_image', {
         dataUrl: editedDataUrl,
         filename,
         autoSave: settings.autoSave,
         saveDir: settings.saveDir,
         copyToClipboard: settings.copyToClipboard,
       })
-      setCaptured(editedDataUrl)
-      setSavedPath(saved)
+      await getCurrentWindow().close()
     } catch (e) {
       console.error('save_annotated_image failed', e)
       setError(String(e))
-    } finally {
       setEditing(false)
     }
   }
