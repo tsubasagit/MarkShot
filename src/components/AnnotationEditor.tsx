@@ -1,8 +1,10 @@
 import React, { useEffect, useRef, useState } from 'react'
 import { Stage, Layer, Image as KonvaImage, Arrow, Rect, Line, Text } from 'react-konva'
 import Konva from 'konva'
+import { invoke } from '@tauri-apps/api/core'
 import Toolbar, { PALETTE, STROKE_PRESETS } from './Toolbar'
 import type { CaptureMode } from './CaptureBar'
+import { loadSettings, DEFAULT_SETTINGS } from '../utils/settings'
 import {
   useAnnotation,
   generateId,
@@ -57,17 +59,47 @@ const AnnotationEditor: React.FC<AnnotationEditorProps> = ({
   const [selectedId, setSelectedId] = useState<string | null>(null)
   const [draft, setDraft] = useState<Draft>(null)
   const [pathCopied, setPathCopied] = useState(false)
+  const [latestSavedPath, setLatestSavedPath] = useState<string | null>(savedPath)
   const stageRef = useRef<Konva.Stage>(null)
 
-  const handleCopyPath = async () => {
-    if (!savedPath) return
-    try {
-      await navigator.clipboard.writeText(savedPath)
-      setPathCopied(true)
-      setTimeout(() => setPathCopied(false), 1500)
-    } catch (e) {
-      console.error('copy path failed', e)
-    }
+  useEffect(() => {
+    setLatestSavedPath(savedPath)
+  }, [savedPath])
+
+  // 編集後（モザイク等を反映した）画像をディスクに保存し、その新しい
+  // パス/URL をクリップボードへ書き込む。撮影直後の savedPath は
+  // 原画像を指してしまうため、ここで毎回 markshot_edited_* として
+  // 別ファイルを書き出し、そのパスを返す。
+  const handleCopyEditedPath = async () => {
+    const stage = stageRef.current
+    if (!stage || !bgImage) return
+    setSelectedId(null)
+    requestAnimationFrame(() => {
+      requestAnimationFrame(async () => {
+        try {
+          const pixelRatio = bgImage.naturalWidth / stageSize.width
+          const dataUrl = stage.toDataURL({ mimeType: 'image/png', pixelRatio })
+          const settings = await loadSettings().catch(() => DEFAULT_SETTINGS)
+          const now = new Date()
+          const pad = (n: number) => String(n).padStart(2, '0')
+          const filename = `markshot_edited_${now.getFullYear()}${pad(now.getMonth() + 1)}${pad(now.getDate())}_${pad(now.getHours())}${pad(now.getMinutes())}${pad(now.getSeconds())}.png`
+          const newPath = await invoke<string | null>('save_annotated_image', {
+            dataUrl,
+            filename,
+            autoSave: true,
+            saveDir: settings.saveDir,
+            copyToClipboard: false,
+          })
+          if (!newPath) return
+          await navigator.clipboard.writeText(newPath)
+          setLatestSavedPath(newPath)
+          setPathCopied(true)
+          setTimeout(() => setPathCopied(false), 1500)
+        } catch (e) {
+          console.error('copy edited path failed', e)
+        }
+      })
+    })
   }
 
   const {
@@ -450,7 +482,7 @@ const AnnotationEditor: React.FC<AnnotationEditorProps> = ({
             {draft && renderDraft(draft, bgImage, stageScale)}
           </Layer>
         </Stage>
-        {savedPath && (
+        {latestSavedPath && (
           <div
             style={{
               display: 'flex',
@@ -469,11 +501,11 @@ const AnnotationEditor: React.FC<AnnotationEditorProps> = ({
                 textAlign: 'center',
               }}
             >
-              保存先: {savedPath}
+              保存先: {latestSavedPath}
             </div>
             <button
-              onClick={handleCopyPath}
-              title="保存先パスをクリップボードにコピー"
+              onClick={handleCopyEditedPath}
+              title="編集後の画像を保存し、そのパスをクリップボードにコピー"
               style={{
                 padding: '4px 10px',
                 background: pathCopied ? '#22c55e' : '#538bb0',
