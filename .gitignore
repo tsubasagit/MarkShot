@@ -4,6 +4,8 @@ dist/
 .env
 debug-*.log
 dev-output.log
+build-*.log
+npm-install.log
 release/
 benchmark-results/
 

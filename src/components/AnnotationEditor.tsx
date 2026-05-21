@@ -2,6 +2,7 @@ import React, { useEffect, useRef, useState } from 'react'
 import { Stage, Layer, Image as KonvaImage, Arrow, Rect, Line, Text } from 'react-konva'
 import Konva from 'konva'
 import { invoke } from '@tauri-apps/api/core'
+import { writeText as tauriWriteText } from '@tauri-apps/plugin-clipboard-manager'
 import Toolbar, { PALETTE, STROKE_PRESETS } from './Toolbar'
 import type { CaptureMode } from './CaptureBar'
 import { loadSettings, DEFAULT_SETTINGS } from '../utils/settings'
@@ -90,13 +91,30 @@ const AnnotationEditor: React.FC<AnnotationEditorProps> = ({
             saveDir: settings.saveDir,
             copyToClipboard: false,
           })
-          if (!newPath) return
-          await navigator.clipboard.writeText(newPath)
+          if (!newPath) {
+            // ファイル保存に失敗した（picture_dir が取得できない等）。
+            // ユーザーに分かるよう alert で通知。
+            window.alert('編集後の画像の保存に失敗したため、パスをコピーできませんでした。設定の保存先フォルダをご確認ください。')
+            return
+          }
+          try {
+            await tauriWriteText(newPath)
+          } catch (clipErr) {
+            console.error('tauri writeText failed, falling back', clipErr)
+            try {
+              await navigator.clipboard.writeText(newPath)
+            } catch (clipErr2) {
+              console.error('navigator.clipboard fallback also failed', clipErr2)
+              window.alert(`パスのコピーに失敗しました。保存先パス:\n${newPath}`)
+              return
+            }
+          }
           setLatestSavedPath(newPath)
           setPathCopied(true)
           setTimeout(() => setPathCopied(false), 1500)
         } catch (e) {
           console.error('copy edited path failed', e)
+          window.alert(`パスのコピー処理でエラーが発生しました:\n${e}`)
         }
       })
     })
@@ -151,8 +169,16 @@ const AnnotationEditor: React.FC<AnnotationEditorProps> = ({
 
   const stageScale = bgImage ? stageSize.width / bgImage.naturalWidth : 1
 
-  const pointerPos = (e: Konva.KonvaEventObject<MouseEvent>) =>
-    e.target.getStage()?.getPointerPosition() ?? null
+  // Konva の getPointerPosition は基本 e.target.getStage() からでも取れるが、
+  // 一部の WebView 環境（特に ARM 上の x64 エミュレーションなど）で
+  // e.target がイベント直後に解決できず null を返すケースが報告されている。
+  // stageRef を経由した参照ならステージ自身のポインタ座標を必ず取得できるので、
+  // こちらをフォールバックに使う。
+  const pointerPos = (e: Konva.KonvaEventObject<MouseEvent>) => {
+    const stageFromEvent = e.target?.getStage?.()
+    const stage = stageFromEvent ?? stageRef.current
+    return stage?.getPointerPosition() ?? null
+  }
 
   const handleMouseDown = (e: Konva.KonvaEventObject<MouseEvent>) => {
     if (tool === 'select') return
@@ -482,17 +508,20 @@ const AnnotationEditor: React.FC<AnnotationEditorProps> = ({
             {draft && renderDraft(draft, bgImage, stageScale)}
           </Layer>
         </Stage>
-        {latestSavedPath && (
-          <div
-            style={{
-              display: 'flex',
-              alignItems: 'center',
-              gap: 8,
-              maxWidth: '90%',
-              flexWrap: 'wrap',
-              justifyContent: 'center',
-            }}
-          >
+        {/* 編集画面の「パスをコピー」は、ボタン押下時に編集後の画像を
+            必ず保存（autoSave=true 固定）してそのパスを返す。
+            よって latestSavedPath の有無に関わらず常時表示する。 */}
+        <div
+          style={{
+            display: 'flex',
+            alignItems: 'center',
+            gap: 8,
+            maxWidth: '90%',
+            flexWrap: 'wrap',
+            justifyContent: 'center',
+          }}
+        >
+          {latestSavedPath && (
             <div
               style={{
                 fontSize: 11,
@@ -503,32 +532,34 @@ const AnnotationEditor: React.FC<AnnotationEditorProps> = ({
             >
               保存先: {latestSavedPath}
             </div>
-            <button
-              onClick={handleCopyEditedPath}
-              title="編集後の画像を保存し、そのパスをクリップボードにコピー"
-              style={{
-                padding: '4px 10px',
-                background: pathCopied ? '#22c55e' : '#538bb0',
-                color: pathCopied ? '#0f0f1a' : '#ffffff',
-                border: '1px solid #2a2a4a',
-                borderRadius: 4,
-                cursor: 'pointer',
-                fontSize: 11,
-                fontWeight: 600,
-                display: 'inline-flex',
-                alignItems: 'center',
-                gap: 4,
-                transition: 'background 0.15s, color 0.15s',
-              }}
-            >
-              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                <rect x="9" y="9" width="13" height="13" rx="2" ry="2" />
-                <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1" />
-              </svg>
-              {pathCopied ? 'コピー済み' : 'パスをコピー'}
-            </button>
-          </div>
-        )}
+          )}
+          <button
+            onClick={handleCopyEditedPath}
+            disabled={!bgImage}
+            title="編集後の画像を保存し、そのパスをクリップボードにコピー"
+            style={{
+              padding: '4px 10px',
+              background: pathCopied ? '#22c55e' : '#538bb0',
+              color: pathCopied ? '#0f0f1a' : '#ffffff',
+              border: '1px solid #2a2a4a',
+              borderRadius: 4,
+              cursor: bgImage ? 'pointer' : 'default',
+              opacity: bgImage ? 1 : 0.5,
+              fontSize: 11,
+              fontWeight: 600,
+              display: 'inline-flex',
+              alignItems: 'center',
+              gap: 4,
+              transition: 'background 0.15s, color 0.15s',
+            }}
+          >
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <rect x="9" y="9" width="13" height="13" rx="2" ry="2" />
+              <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1" />
+            </svg>
+            {pathCopied ? 'コピー済み' : 'パスをコピー'}
+          </button>
+        </div>
       </div>
     </div>
   )

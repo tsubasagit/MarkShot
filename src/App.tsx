@@ -3,6 +3,7 @@ import { invoke } from '@tauri-apps/api/core'
 import { listen, type UnlistenFn } from '@tauri-apps/api/event'
 import { getCurrentWindow } from '@tauri-apps/api/window'
 import { register, unregister, isRegistered } from '@tauri-apps/plugin-global-shortcut'
+import { writeText as tauriWriteText } from '@tauri-apps/plugin-clipboard-manager'
 import RegionSelector from './components/RegionSelector'
 import RecordingOverlay from './components/RecordingOverlay'
 import RecordingControl from './components/RecordingControl'
@@ -75,11 +76,20 @@ function Placeholder() {
   const handleCopyPath = async () => {
     if (!savedPath) return
     try {
-      await navigator.clipboard.writeText(savedPath)
+      // Tauri/WebView2 では navigator.clipboard.writeText がフォーカス/権限の都合で
+      // 失敗することがあるため、Tauri プラグイン経由で書き込む。
+      await tauriWriteText(savedPath)
       setPathCopied(true)
       setTimeout(() => setPathCopied(false), 1500)
     } catch (e) {
       console.error('copy path failed', e)
+      try {
+        await navigator.clipboard.writeText(savedPath)
+        setPathCopied(true)
+        setTimeout(() => setPathCopied(false), 1500)
+      } catch (e2) {
+        console.error('fallback navigator.clipboard failed', e2)
+      }
     }
   }
 
