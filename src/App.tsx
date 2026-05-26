@@ -134,7 +134,10 @@ function Placeholder() {
     }
   }, [])
 
-  const saveEditedImage = async (editedDataUrl: string): Promise<string | null> => {
+  const saveEditedImage = async (
+    editedDataUrl: string,
+    options?: { forceSave?: boolean },
+  ): Promise<string | null> => {
     const settings = await loadSettings().catch(() => DEFAULT_SETTINGS)
     const now = new Date()
     const pad = (n: number) => String(n).padStart(2, '0')
@@ -142,7 +145,7 @@ function Placeholder() {
     return await invoke<string | null>('save_annotated_image', {
       dataUrl: editedDataUrl,
       filename,
-      autoSave: settings.autoSave,
+      autoSave: options?.forceSave ? true : settings.autoSave,
       saveDir: settings.saveDir,
       copyToClipboard: settings.copyToClipboard,
     })
@@ -165,7 +168,7 @@ function Placeholder() {
       return
     }
     try {
-      await saveEditedImage(editedDataUrl)
+      await saveEditedImage(editedDataUrl, { forceSave: true })
     } catch (e) {
       console.error('auto-save before new capture failed', e)
     }

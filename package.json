@@ -1,6 +1,6 @@
 {
   "name": "markshot",
-  "version": "2.0.11",
+  "version": "2.0.12",
   "description": "スクリーンショット＆注釈ツール (Tauri 2)",
   "type": "module",
   "scripts": {
