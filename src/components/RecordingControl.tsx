@@ -1,4 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react'
+import { invoke } from '@tauri-apps/api/core'
+
+const MAX_SECONDS = 60
 
 const RecordingControl: React.FC = () => {
   const [elapsed, setElapsed] = useState(0)
@@ -7,7 +10,7 @@ const RecordingControl: React.FC = () => {
 
   useEffect(() => {
     timerRef.current = setInterval(() => {
-      setElapsed((prev) => prev + 1)
+      setElapsed((prev) => Math.min(prev + 1, MAX_SECONDS))
     }, 1000)
     return () => {
       if (timerRef.current) clearInterval(timerRef.current)
@@ -16,15 +19,13 @@ const RecordingControl: React.FC = () => {
 
   const handlePauseResume = () => {
     if (isPaused) {
-      // Resume
-      window.electronAPI?.resumeRecordingFromControl()
+      invoke('resume_gif_recording').catch(() => {})
       timerRef.current = setInterval(() => {
-        setElapsed((prev) => prev + 1)
+        setElapsed((prev) => Math.min(prev + 1, MAX_SECONDS))
       }, 1000)
       setIsPaused(false)
     } else {
-      // Pause
-      window.electronAPI?.pauseRecordingFromControl()
+      invoke('pause_gif_recording').catch(() => {})
       if (timerRef.current) {
         clearInterval(timerRef.current)
         timerRef.current = null
@@ -34,7 +35,7 @@ const RecordingControl: React.FC = () => {
   }
 
   const handleStop = () => {
-    window.electronAPI?.stopRecordingFromControl()
+    invoke('stop_gif_recording').catch(() => {})
   }
 
   const formatTime = (seconds: number) => {
@@ -85,6 +86,7 @@ const RecordingControl: React.FC = () => {
         }}
       >
         {formatTime(elapsed)}
+        <span style={{ fontSize: 11, color: '#8a8aa0', fontWeight: 400 }}> / 1:00</span>
       </span>
 
       {/* Pause / Resume button */}

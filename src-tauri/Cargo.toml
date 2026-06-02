@@ -1,6 +1,6 @@
 [package]
 name = "markshot"
-version = "2.0.12"
+version = "2.1.0"
 description = "スクリーンショット&注釈ツール (Tauri 2)"
 authors = ["AppTalentHub"]
 edition = "2021"
@@ -25,6 +25,7 @@ serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 screenshots = "0.8"
 base64 = "0.22"
+gif = "0.13"
 
 [profile.release]
 panic = "abort"

@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react'
 import { invoke } from '@tauri-apps/api/core'
 import { listen, type UnlistenFn } from '@tauri-apps/api/event'
+import { getCurrentWindow } from '@tauri-apps/api/window'
 import {
   createInitialState,
   resetState,
@@ -13,7 +14,7 @@ import { loadSettings, DEFAULT_SETTINGS, type Settings } from '@/utils/settings'
 
 type ScreenshotEvent = {
   dataUrl: string
-  info: { width: number; height: number; scaleFactor: number }
+  info: { id: number; width: number; height: number; scaleFactor: number; isPrimary: boolean }
 }
 
 interface Region {
@@ -53,9 +54,11 @@ const RegionSelector: React.FC<RegionSelectorProps> = ({ mode = 'screenshot' }) 
   const settingsRef = useRef<Settings>(DEFAULT_SETTINGS)
   const [screenshotImage, setScreenshotImage] = useState<HTMLImageElement | null>(null)
   const [displayInfo, setDisplayInfo] = useState<{
+    id: number
     width: number
     height: number
     scaleFactor: number
+    isPrimary: boolean
   } | null>(null)
   const [isDragging, setIsDragging] = useState(false)
   const [region, setRegion] = useState<Region | null>(null)
@@ -72,7 +75,9 @@ const RegionSelector: React.FC<RegionSelectorProps> = ({ mode = 'screenshot' }) 
           settingsRef.current = s
         })
         .catch((e) => console.error('overlay loadSettings failed', e))
-      unlistenScreenshot = await listen<ScreenshotEvent>('overlay:screenshot', (event) => {
+      // 各オーバーレイ窓は自分のラベル宛イベントのみ受け取る（マルチモニタで取り違え防止）
+      const label = getCurrentWindow().label
+      unlistenScreenshot = await listen<ScreenshotEvent>(`overlay:screenshot:${label}`, (event) => {
         if (disposed) return
         const { dataUrl, info } = event.payload
         forceHideFrameRef.current = true
@@ -309,16 +314,36 @@ const RegionSelector: React.FC<RegionSelectorProps> = ({ mode = 'screenshot' }) 
     if (!result.send || !screenshotImage || !('rect' in result)) return
     const { x, y, w, h } = result.rect
 
+    // CSS px -> 当該モニタのローカル物理ピクセル（スクショ画像 = そのモニタの物理解像度）
+    const scaleX = screenshotImage.width / window.innerWidth
+    const scaleY = screenshotImage.height / window.innerHeight
+
     if (mode === 'gif') {
-      // GIF mode is deferred to Phase 2. Cancel overlay on selection.
-      invoke('overlay_cancel').catch(() => {})
+      const px = Math.round(x * scaleX)
+      const py = Math.round(y * scaleY)
+      const pw = Math.round(w * scaleX)
+      const ph = Math.round(h * scaleY)
+      const now = new Date()
+      const pad = (n: number) => String(n).padStart(2, '0')
+      const filename = `markshot_${now.getFullYear()}${pad(now.getMonth() + 1)}${pad(now.getDate())}_${pad(now.getHours())}${pad(now.getMinutes())}${pad(now.getSeconds())}.gif`
+      invoke('overlay_gif_region_selected', {
+        monitorId: displayInfo?.id ?? 0,
+        x: px,
+        y: py,
+        width: pw,
+        height: ph,
+        scaleFactor: displayInfo?.scaleFactor ?? 1,
+        filename,
+        autoSave: settingsRef.current.autoSave,
+        saveDir: settingsRef.current.saveDir,
+      }).catch((err) => {
+        console.error('overlay_gif_region_selected failed', err)
+      })
       return
     }
 
     // Screenshot mode: crop and send image
     const cropCanvas = document.createElement('canvas')
-    const scaleX = screenshotImage.width / window.innerWidth
-    const scaleY = screenshotImage.height / window.innerHeight
     cropCanvas.width = Math.round(w * scaleX)
     cropCanvas.height = Math.round(h * scaleY)
 

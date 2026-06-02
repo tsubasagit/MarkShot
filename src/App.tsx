@@ -96,6 +96,8 @@ function Placeholder() {
   useEffect(() => {
     let unlistenComplete: UnlistenFn | null = null
     let unlistenCancelled: UnlistenFn | null = null
+    let unlistenGifComplete: UnlistenFn | null = null
+    let unlistenGifError: UnlistenFn | null = null
     let registeredKey: string | null = null
     const setup = async () => {
       unlistenComplete = await listen<CaptureCompletePayload>('capture:complete', (e) => {
@@ -107,6 +109,18 @@ function Placeholder() {
       })
       unlistenCancelled = await listen('capture:cancelled', () => {
         setBusy(false)
+      })
+      // GIF 録画完了：エディタは開かず GIF をプレビュー表示する
+      unlistenGifComplete = await listen<CaptureCompletePayload>('gif:complete', (e) => {
+        setCaptured(e.payload.dataUrl)
+        setSavedPath(e.payload.savedPath)
+        setBusy(false)
+        setError(null)
+        setEditing(false)
+      })
+      unlistenGifError = await listen<string>('gif:error', (e) => {
+        setBusy(false)
+        setError(`GIF録画エラー: ${e.payload}`)
       })
       const loaded = await loadSettings().catch((e) => {
         console.error('loadSettings failed', e)
@@ -130,6 +144,8 @@ function Placeholder() {
     return () => {
       unlistenComplete?.()
       unlistenCancelled?.()
+      unlistenGifComplete?.()
+      unlistenGifError?.()
       if (registeredKey) unregister(registeredKey).catch(() => {})
     }
   }, [])
@@ -163,10 +179,6 @@ function Placeholder() {
   }
 
   const handleNewFromEditor = async (mode: 'screenshot' | 'gif', editedDataUrl: string) => {
-    if (mode === 'gif') {
-      setError('GIF録画は Phase 2 で復活予定です')
-      return
-    }
     try {
       await saveEditedImage(editedDataUrl, { forceSave: true })
     } catch (e) {
@@ -178,7 +190,7 @@ function Placeholder() {
     setError(null)
     setBusy(true)
     try {
-      await invoke('start_region_capture')
+      await invoke('start_region_capture', { mode })
     } catch (e) {
       setError(String(e))
       setBusy(false)
@@ -187,19 +199,17 @@ function Placeholder() {
 
   const handleNewCapture = async (mode?: 'screenshot' | 'gif') => {
     const m = mode ?? captureMode
-    if (m === 'gif') {
-      setError('GIF録画は Phase 2 で復活予定です')
-      return
-    }
     setBusy(true)
     setError(null)
     try {
-      await invoke('start_region_capture')
+      await invoke('start_region_capture', { mode: m })
     } catch (e) {
       setError(String(e))
       setBusy(false)
     }
   }
+
+  const isGif = !!captured && captured.startsWith('data:image/gif')
 
   if (editing && captured) {
     return (
@@ -241,7 +251,7 @@ function Placeholder() {
           onNewCapture={handleNewCapture}
           disabled={busy}
         />
-        {captured && (
+        {captured && !isGif && (
           <button
             onClick={() => setEditing(true)}
             title="編集（矢印・テキスト・枠・ペン・モザイク）"
@@ -301,7 +311,9 @@ function Placeholder() {
             style={{ maxWidth: '100%', maxHeight: '100%', border: '1px solid #2a2a4a', borderRadius: 4 }}
           />
           <div style={{ fontSize: 11, color: '#6c7086' }}>
-            クリップボードに PNG コピー済み（Ctrl+V で貼り付け可）
+            {isGif
+              ? 'GIF録画を保存しました'
+              : 'クリップボードに PNG コピー済み（Ctrl+V で貼り付け可）'}
           </div>
           {savedPath && (
             <div
