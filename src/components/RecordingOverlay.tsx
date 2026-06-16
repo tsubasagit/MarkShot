@@ -17,7 +17,12 @@ const RecordingOverlay: React.FC<RecordingOverlayProps> = ({ region }) => {
     const ctx = canvas.getContext('2d')
     if (!ctx) return
 
-    const sf = region.scaleFactor
+    // region.{x,y,w,h} は当該モニタのローカル物理ピクセル。
+    // RegionSelector 側は実測比 (screenshotImage.width / window.innerWidth) =
+    // この WebView の実 devicePixelRatio で物理化しているので、逆変換も同じ
+    // devicePixelRatio を使う。crate 由来の region.scaleFactor は Windows で
+    // 実 DPR と一致しないことがあり、赤枠がズレる原因になる。
+    const sf = window.devicePixelRatio || region.scaleFactor || 1
     const rx = region.x / sf
     const ry = region.y / sf
     const rw = region.w / sf
