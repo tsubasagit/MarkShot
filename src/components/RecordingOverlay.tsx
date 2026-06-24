@@ -1,4 +1,5 @@
-import React, { useEffect, useRef } from 'react'
+import React, { useEffect, useRef, useState } from 'react'
+import { listen, type UnlistenFn } from '@tauri-apps/api/event'
 
 interface RecordingOverlayProps {
   region: { x: number; y: number; w: number; h: number; scaleFactor: number }
@@ -6,6 +7,23 @@ interface RecordingOverlayProps {
 
 const RecordingOverlay: React.FC<RecordingOverlayProps> = ({ region }) => {
   const canvasRef = useRef<HTMLCanvasElement>(null)
+  const [count, setCount] = useState(0)
+
+  // 録画範囲の中心（CSS px）。カウントダウン数字をここに重ねる。
+  const sf = window.devicePixelRatio || region.scaleFactor || 1
+  const centerX = (region.x + region.w / 2) / sf
+  const centerY = (region.y + region.h / 2) / sf
+
+  // Rust から届くカウントダウン（3 → 2 → 1 → 0）。0 で非表示。
+  useEffect(() => {
+    let unlisten: UnlistenFn | null = null
+    listen<number>('gif:countdown', (e) => setCount(e.payload)).then((u) => {
+      unlisten = u
+    })
+    return () => {
+      unlisten?.()
+    }
+  }, [])
 
   useEffect(() => {
     const canvas = canvasRef.current
@@ -44,17 +62,41 @@ const RecordingOverlay: React.FC<RecordingOverlayProps> = ({ region }) => {
   }, [region])
 
   return (
-    <canvas
-      ref={canvasRef}
-      style={{
-        position: 'fixed',
-        top: 0,
-        left: 0,
-        width: '100vw',
-        height: '100vh',
-        zIndex: 9999,
-      }}
-    />
+    <>
+      <canvas
+        ref={canvasRef}
+        style={{
+          position: 'fixed',
+          top: 0,
+          left: 0,
+          width: '100vw',
+          height: '100vh',
+          zIndex: 9999,
+        }}
+      />
+      {count > 0 && (
+        <div
+          key={count}
+          style={{
+            position: 'fixed',
+            left: centerX,
+            top: centerY,
+            transform: 'translate(-50%, -50%)',
+            fontSize: 140,
+            fontWeight: 900,
+            color: '#fff',
+            textShadow: '0 0 40px rgba(255,23,68,0.9), 0 0 80px rgba(255,23,68,0.5)',
+            fontFamily: 'monospace',
+            animation: 'countdown-pop 1s ease-out',
+            zIndex: 10000,
+            pointerEvents: 'none',
+            userSelect: 'none',
+          }}
+        >
+          {count}
+        </div>
+      )}
+    </>
   )
 }
 

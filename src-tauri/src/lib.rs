@@ -475,8 +475,7 @@ async fn overlay_gif_region_selected(
         let _ = overlay.show();
     }
 
-    // --- 録画コントロール窓（タイマー＋停止/一時停止）。録画範囲の外側に置く ---
-    spawn_recording_control(&app, &di, x, y, width, height);
+    // 録画コントロール窓（タイマー＋停止/一時停止）はカウントダウン後に生成する。
 
     // --- 録画スレッド開始 ---
     let stop = Arc::new(AtomicBool::new(false));
@@ -504,6 +503,25 @@ async fn overlay_gif_region_selected(
 
     let app2 = app.clone();
     std::thread::spawn(move || {
+        // --- 録画開始前のカウントダウン（3 → 2 → 1）---
+        // 赤枠オーバーレイに数字を表示し、本録画の前に間を置くことで
+        // 範囲確定直後の余計な操作が GIF に写り込まないようにする。
+        // WebView の listen 登録が間に合うよう、最初に少しだけ待つ。
+        std::thread::sleep(Duration::from_millis(300));
+        for n in (1..=3).rev() {
+            if let Some(ov) = app2.get_webview_window("recording-overlay") {
+                let _ = ov.emit("gif:countdown", n);
+            }
+            std::thread::sleep(Duration::from_secs(1));
+        }
+        // 0 を送って数字を消す
+        if let Some(ov) = app2.get_webview_window("recording-overlay") {
+            let _ = ov.emit("gif:countdown", 0);
+        }
+
+        // カウントダウン後に録画コントロール窓を出し、タイマーを録画と同期させる。
+        spawn_recording_control(&app2, &di, x, y, width, height);
+
         let result = record_gif(screen, x, y, width, height, &stop, &paused);
 
         // 録画状態をクリア
