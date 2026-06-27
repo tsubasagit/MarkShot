@@ -361,6 +361,21 @@ async fn save_annotated_image(
     )
 }
 
+/// 録画した GIF（data URL）を手動でディスクに保存する。保存先パスを返す。
+#[tauri::command]
+async fn save_gif(
+    app: AppHandle,
+    data_url: String,
+    filename: String,
+    save_dir: Option<String>,
+) -> Result<String, String> {
+    let base64_part = data_url
+        .strip_prefix("data:image/gif;base64,")
+        .ok_or_else(|| "invalid gif data url".to_string())?;
+    let bytes = STANDARD.decode(base64_part).map_err(|e| e.to_string())?;
+    save_bytes_to_disk(&app, save_dir.as_deref(), &filename, &bytes)
+}
+
 fn save_bytes_to_disk(
     app: &AppHandle,
     save_dir: Option<&str>,
@@ -407,6 +422,8 @@ const GIF_MAX_WIDTH: u32 = 800;
 struct GifCompletePayload {
     data_url: String,
     saved_path: Option<String>,
+    /// 手動「保存」用に提案するファイル名（自動保存しなかった場合に使用）。
+    filename: String,
 }
 
 /// GIF モードで範囲確定したときに呼ばれる。録画を開始する。
@@ -561,6 +578,7 @@ async fn overlay_gif_region_selected(
                         &GifCompletePayload {
                             data_url,
                             saved_path,
+                            filename: filename.clone(),
                         },
                     );
                 }
@@ -629,6 +647,164 @@ fn spawn_recording_control(
     }
 }
 
+/// 現在のマウスカーソルを、キャプチャ済みフレーム（RGBA）に合成する。
+///
+/// `screenshots` クレートの `capture_area` はカーソルを含まないため、Win32 から
+/// 実際のカーソル画像を取得して描き込む。透過の正確な復元のために、黒背景・白背景へ
+/// それぞれ `DrawIconEx` し、その差分から不透明度を求めて合成する（モノクロ／カラー／
+/// 半透明いずれのカーソルでも破綻しない定番手法）。
+///
+/// `region_left` / `region_top` はキャプチャ範囲左上の「仮想デスクトップ物理座標」。
+#[cfg(windows)]
+fn composite_cursor(
+    frame: &mut screenshots::image::RgbaImage,
+    region_left: i32,
+    region_top: i32,
+) {
+    use core::ffi::c_void;
+    use core::mem::size_of;
+    use windows::Win32::Graphics::Gdi::{
+        CreateCompatibleDC, CreateDIBSection, DeleteDC, DeleteObject, GetDC, GetObjectW, ReleaseDC,
+        SelectObject, BITMAP, BITMAPINFO, BITMAPINFOHEADER, BI_RGB, DIB_RGB_COLORS, HGDIOBJ,
+    };
+    use windows::Win32::UI::WindowsAndMessaging::{
+        DrawIconEx, GetCursorInfo, GetIconInfo, CURSORINFO, CURSOR_SHOWING, DI_NORMAL, HICON,
+        ICONINFO,
+    };
+
+    unsafe {
+        let mut ci = CURSORINFO {
+            cbSize: size_of::<CURSORINFO>() as u32,
+            ..Default::default()
+        };
+        if GetCursorInfo(&mut ci).is_err() {
+            return;
+        }
+        // カーソル非表示中（動画再生中など）は描かない。
+        if (ci.flags.0 & CURSOR_SHOWING.0) == 0 || ci.hCursor.is_invalid() {
+            return;
+        }
+        let hicon = HICON(ci.hCursor.0);
+
+        let mut ii = ICONINFO::default();
+        if GetIconInfo(hicon, &mut ii).is_err() {
+            return;
+        }
+        // GetIconInfo が生成したビットマップは必ず解放する。
+        let free_ii = |ii: &ICONINFO| {
+            if !ii.hbmColor.is_invalid() {
+                let _ = DeleteObject(HGDIOBJ(ii.hbmColor.0));
+            }
+            if !ii.hbmMask.is_invalid() {
+                let _ = DeleteObject(HGDIOBJ(ii.hbmMask.0));
+            }
+        };
+
+        // カーソルの実寸（高 DPI では 48/64px などになる）をマスクビットマップから得る。
+        let mut bm = BITMAP::default();
+        let got = GetObjectW(
+            HGDIOBJ(ii.hbmMask.0),
+            size_of::<BITMAP>() as i32,
+            Some(&mut bm as *mut _ as *mut c_void),
+        );
+        let (cw, ch) = if got != 0 {
+            let w = bm.bmWidth.max(1);
+            // モノクロカーソルはマスクが AND/XOR の縦 2 枚組なので高さは半分。
+            let h = if ii.hbmColor.is_invalid() {
+                (bm.bmHeight / 2).max(1)
+            } else {
+                bm.bmHeight.max(1)
+            };
+            (w, h)
+        } else {
+            (32, 32)
+        };
+
+        // ホットスポット補正後の、フレーム内ローカル左上座標。
+        let left = ci.ptScreenPos.x - ii.xHotspot as i32 - region_left;
+        let top = ci.ptScreenPos.y - ii.yHotspot as i32 - region_top;
+
+        let fw = frame.width() as i32;
+        let fh = frame.height() as i32;
+        if left >= fw || top >= fh || left + cw <= 0 || top + ch <= 0 {
+            free_ii(&ii);
+            return;
+        }
+
+        // カーソルサイズの 32bpp トップダウン DIB を 1 枚用意し、黒・白 2 回描く。
+        let mut bmi = BITMAPINFO::default();
+        bmi.bmiHeader = BITMAPINFOHEADER {
+            biSize: size_of::<BITMAPINFOHEADER>() as u32,
+            biWidth: cw,
+            biHeight: -ch, // 負 = トップダウン
+            biPlanes: 1,
+            biBitCount: 32,
+            biCompression: BI_RGB.0 as u32,
+            ..Default::default()
+        };
+
+        let screen_dc = GetDC(None);
+        let mem_dc = CreateCompatibleDC(Some(screen_dc));
+        let mut bits_ptr: *mut c_void = core::ptr::null_mut();
+        let dib = CreateDIBSection(Some(mem_dc), &bmi, DIB_RGB_COLORS, &mut bits_ptr, None, 0);
+        let _ = ReleaseDC(None, screen_dc);
+        let dib = match dib {
+            Ok(d) if !bits_ptr.is_null() => d,
+            _ => {
+                let _ = DeleteDC(mem_dc);
+                free_ii(&ii);
+                return;
+            }
+        };
+        let old = SelectObject(mem_dc, HGDIOBJ(dib.0));
+
+        let npix = (cw * ch) as usize;
+        let bits = core::slice::from_raw_parts_mut(bits_ptr as *mut u8, npix * 4);
+
+        // 黒背景に描いて控える（= プリマルチプライ済み前景色）。
+        bits.iter_mut().for_each(|b| *b = 0);
+        let _ = DrawIconEx(mem_dc, 0, 0, hicon, cw, ch, 0, None, DI_NORMAL);
+        let on_black = bits.to_vec();
+
+        // 白背景に描く（現在の DIB がそのまま白背景の結果になる）。
+        bits.iter_mut().for_each(|b| *b = 0xFF);
+        let _ = DrawIconEx(mem_dc, 0, 0, hicon, cw, ch, 0, None, DI_NORMAL);
+        let on_white = &*bits;
+
+        // 各画素: white-black = (1-α)*255。new = black + dst*(white-black)/255。
+        // （black はプリマルチ前景なので over 合成がこの 1 式で済む）DIB は BGRA 順。
+        for cy in 0..ch {
+            let fy = top + cy;
+            if fy < 0 || fy >= fh {
+                continue;
+            }
+            for cx in 0..cw {
+                let fx = left + cx;
+                if fx < 0 || fx >= fw {
+                    continue;
+                }
+                let idx = ((cy * cw + cx) * 4) as usize;
+                let inv_b = (on_white[idx] as i32 - on_black[idx] as i32).clamp(0, 255);
+                let inv_g = (on_white[idx + 1] as i32 - on_black[idx + 1] as i32).clamp(0, 255);
+                let inv_r = (on_white[idx + 2] as i32 - on_black[idx + 2] as i32).clamp(0, 255);
+                let px = frame.get_pixel_mut(fx as u32, fy as u32);
+                let dr = px.0[0] as i32;
+                let dg = px.0[1] as i32;
+                let db = px.0[2] as i32;
+                px.0[0] = (on_black[idx + 2] as i32 + dr * inv_r / 255).clamp(0, 255) as u8;
+                px.0[1] = (on_black[idx + 1] as i32 + dg * inv_g / 255).clamp(0, 255) as u8;
+                px.0[2] = (on_black[idx] as i32 + db * inv_b / 255).clamp(0, 255) as u8;
+                // アルファ（px.0[3]）は不透明のまま維持。
+            }
+        }
+
+        SelectObject(mem_dc, old);
+        let _ = DeleteObject(HGDIOBJ(dib.0));
+        let _ = DeleteDC(mem_dc);
+        free_ii(&ii);
+    }
+}
+
 /// 選択範囲を一定 FPS で連写して GIF バイト列にエンコードする（呼び出しスレッドで実行）。
 fn record_gif(
     screen: Screen,
@@ -651,6 +827,10 @@ fn record_gif(
     let frame_delay = Duration::from_millis((1000 / GIF_FPS) as u64);
     let gif_delay_cs = (100 / GIF_FPS) as u16; // 1/100 秒単位
 
+    // キャプチャ範囲左上の仮想デスクトップ物理座標（カーソル合成の基準）。
+    let abs_left = screen.display_info.x + x;
+    let abs_top = screen.display_info.y + y;
+
     let mut buf: Vec<u8> = Vec::new();
     {
         let mut encoder = gif::Encoder::new(&mut buf, out_w as u16, out_h as u16, &[])
@@ -667,9 +847,13 @@ fn record_gif(
             }
             let tick_start = Instant::now();
 
-            let captured = screen
+            let mut captured = screen
                 .capture_area(x, y, width, height)
                 .map_err(|e| format!("capture_area err: {e}"))?;
+
+            // OS カーソルはキャプチャに含まれないため、リサイズ前のフレームに描き込む。
+            #[cfg(windows)]
+            composite_cursor(&mut captured, abs_left, abs_top);
 
             let mut raw = if out_w != width || out_h != height {
                 screenshots::image::imageops::resize(&captured, out_w, out_h, FilterType::Triangle)
@@ -750,6 +934,7 @@ pub fn run() {
             overlay_screenshot_loaded,
             overlay_painted,
             save_annotated_image,
+            save_gif,
             overlay_gif_region_selected,
             stop_gif_recording,
             pause_gif_recording,

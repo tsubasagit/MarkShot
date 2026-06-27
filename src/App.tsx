@@ -62,6 +62,7 @@ const App: React.FC = () => {
 }
 
 type CaptureCompletePayload = { dataUrl: string; savedPath: string | null }
+type GifCompletePayload = { dataUrl: string; savedPath: string | null; filename: string }
 
 function Placeholder() {
   const [captureMode, setCaptureMode] = useState<'screenshot' | 'gif'>('screenshot')
@@ -72,6 +73,8 @@ function Placeholder() {
   const [settingsOpen, setSettingsOpen] = useState(false)
   const [editing, setEditing] = useState(false)
   const [pathCopied, setPathCopied] = useState(false)
+  const [gifFilename, setGifFilename] = useState<string | null>(null)
+  const [gifSaving, setGifSaving] = useState(false)
 
   const handleCopyPath = async () => {
     if (!savedPath) return
@@ -93,6 +96,31 @@ function Placeholder() {
     }
   }
 
+  const handleSaveGif = async () => {
+    if (!captured || gifSaving) return
+    setGifSaving(true)
+    try {
+      const settings = await loadSettings().catch(() => DEFAULT_SETTINGS)
+      let filename = gifFilename
+      if (!filename) {
+        const now = new Date()
+        const pad = (n: number) => String(n).padStart(2, '0')
+        filename = `markshot_${now.getFullYear()}${pad(now.getMonth() + 1)}${pad(now.getDate())}_${pad(now.getHours())}${pad(now.getMinutes())}${pad(now.getSeconds())}.gif`
+      }
+      const path = await invoke<string>('save_gif', {
+        dataUrl: captured,
+        filename,
+        saveDir: settings.saveDir,
+      })
+      setSavedPath(path)
+    } catch (e) {
+      console.error('save_gif failed', e)
+      setError(`GIF保存エラー: ${String(e)}`)
+    } finally {
+      setGifSaving(false)
+    }
+  }
+
   useEffect(() => {
     let unlistenComplete: UnlistenFn | null = null
     let unlistenCancelled: UnlistenFn | null = null
@@ -111,9 +139,10 @@ function Placeholder() {
         setBusy(false)
       })
       // GIF 録画完了：エディタは開かず GIF をプレビュー表示する
-      unlistenGifComplete = await listen<CaptureCompletePayload>('gif:complete', (e) => {
+      unlistenGifComplete = await listen<GifCompletePayload>('gif:complete', (e) => {
         setCaptured(e.payload.dataUrl)
         setSavedPath(e.payload.savedPath)
+        setGifFilename(e.payload.filename)
         setBusy(false)
         setError(null)
         setEditing(false)
@@ -312,9 +341,38 @@ function Placeholder() {
           />
           <div style={{ fontSize: 11, color: '#6c7086' }}>
             {isGif
-              ? 'GIF録画を保存しました'
+              ? savedPath
+                ? 'GIF録画を保存しました'
+                : 'GIF録画が完了しました（未保存）'
               : 'クリップボードに PNG コピー済み（Ctrl+V で貼り付け可）'}
           </div>
+          {isGif && !savedPath && (
+            <button
+              onClick={handleSaveGif}
+              disabled={gifSaving}
+              title="GIF をディスクに保存"
+              style={{
+                padding: '6px 16px',
+                background: gifSaving ? '#2a2a4a' : '#00FFFF',
+                color: gifSaving ? '#b0b0d0' : '#0f0f1a',
+                border: 'none',
+                borderRadius: 6,
+                cursor: gifSaving ? 'default' : 'pointer',
+                fontSize: 12,
+                fontWeight: 600,
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: 6,
+              }}
+            >
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z" />
+                <polyline points="17 21 17 13 7 13 7 21" />
+                <polyline points="7 3 7 8 15 8" />
+              </svg>
+              {gifSaving ? '保存中…' : '保存'}
+            </button>
+          )}
           {savedPath && (
             <div
               style={{
