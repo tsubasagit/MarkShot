@@ -184,6 +184,7 @@ const styles: Record<string, React.CSSProperties> = {
     border: '1px solid #2a2a4a',
     width: '100%',
     boxSizing: 'border-box',
+    flexShrink: 0,
   },
   group: {
     display: 'flex',

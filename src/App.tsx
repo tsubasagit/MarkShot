@@ -325,21 +325,42 @@ function Placeholder() {
         <div
           style={{
             flex: 1,
+            minHeight: 0,
             width: '100%',
             padding: 12,
             display: 'flex',
             flexDirection: 'column',
             alignItems: 'center',
             gap: 8,
-            overflow: 'auto',
+            boxSizing: 'border-box',
           }}
         >
-          <img
-            src={captured}
-            alt="captured"
-            style={{ maxWidth: '100%', maxHeight: '100%', border: '1px solid #2a2a4a', borderRadius: 4 }}
-          />
-          <div style={{ fontSize: 11, color: '#6c7086' }}>
+          {/* 画像は余った高さに収める。保存ボタンや保存先の行より
+              優先度が低いので、ここだけを縮める。 */}
+          <div
+            style={{
+              flex: 1,
+              minHeight: 0,
+              width: '100%',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              overflow: 'hidden',
+            }}
+          >
+            <img
+              src={captured}
+              alt="captured"
+              style={{
+                maxWidth: '100%',
+                maxHeight: '100%',
+                objectFit: 'contain',
+                border: '1px solid #2a2a4a',
+                borderRadius: 4,
+              }}
+            />
+          </div>
+          <div style={{ fontSize: 11, color: '#6c7086', flexShrink: 0 }}>
             {isGif
               ? savedPath
                 ? 'GIF録画を保存しました'
@@ -352,6 +373,7 @@ function Placeholder() {
               disabled={gifSaving}
               title="GIF をディスクに保存"
               style={{
+                flexShrink: 0,
                 padding: '6px 16px',
                 background: gifSaving ? '#2a2a4a' : '#00FFFF',
                 color: gifSaving ? '#b0b0d0' : '#0f0f1a',
@@ -376,6 +398,7 @@ function Placeholder() {
           {savedPath && (
             <div
               style={{
+                flexShrink: 0,
                 display: 'flex',
                 alignItems: 'center',
                 gap: 8,

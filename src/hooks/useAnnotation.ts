@@ -153,6 +153,55 @@ export function useAnnotation() {
     [annotations, pushState]
   )
 
+  // Stage のサイズが変わると、stage 座標で保持している注釈だけが
+  // 背景画像からズレる。履歴ごと一括で拡大縮小して整合を保つ。
+  // モザイクの pixelSize だけは原寸ピクセル基準なので倍率をかけない。
+  const scaleAll = useCallback((factor: number) => {
+    if (!Number.isFinite(factor) || factor <= 0 || Math.abs(factor - 1) < 1e-6) return
+    const f = (v: number) => v * factor
+    const scaleOne = (ann: Annotation): Annotation => {
+      switch (ann.type) {
+        case 'pen':
+          return { ...ann, points: ann.points.map(f), strokeWidth: f(ann.strokeWidth) }
+        case 'arrow':
+          return {
+            ...ann,
+            points: ann.points.map(f) as [number, number, number, number],
+            strokeWidth: f(ann.strokeWidth),
+          }
+        case 'text':
+          return { ...ann, x: f(ann.x), y: f(ann.y), fontSize: f(ann.fontSize) }
+        case 'rect':
+          return {
+            ...ann,
+            x: f(ann.x),
+            y: f(ann.y),
+            width: f(ann.width),
+            height: f(ann.height),
+            strokeWidth: f(ann.strokeWidth),
+          }
+        case 'ellipse':
+          return {
+            ...ann,
+            x: f(ann.x),
+            y: f(ann.y),
+            radiusX: f(ann.radiusX),
+            radiusY: f(ann.radiusY),
+            strokeWidth: f(ann.strokeWidth),
+          }
+        case 'mosaic':
+          return { ...ann, x: f(ann.x), y: f(ann.y), width: f(ann.width), height: f(ann.height) }
+        case 'step':
+        case 'badge':
+          return { ...ann, x: f(ann.x), y: f(ann.y) }
+        default:
+          return ann
+      }
+    }
+    setAnnotations((prev) => (prev.length ? prev.map(scaleOne) : prev))
+    setHistory((prev) => prev.map((list) => list.map(scaleOne)))
+  }, [])
+
   const undo = useCallback(() => {
     if (historyIndex > 0) {
       const newIndex = historyIndex - 1
@@ -177,6 +226,7 @@ export function useAnnotation() {
     addAnnotation,
     updateAnnotation,
     removeAnnotation,
+    scaleAll,
     undo,
     redo,
     canUndo,
