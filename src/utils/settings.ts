@@ -1,3 +1,4 @@
+import { invoke } from '@tauri-apps/api/core'
 import { load, type Store } from '@tauri-apps/plugin-store'
 
 export type Settings = {
@@ -42,4 +43,14 @@ export async function loadSettings(): Promise<Settings> {
 export async function saveSetting<K extends keyof Settings>(key: K, value: Settings[K]): Promise<void> {
   const store = await getStore()
   await store.set(key, value)
+}
+
+/**
+ * 保存先フォルダ（未設定なら Pictures/MarkShot）をエクスプローラーで開く。
+ * saveDir を省略したときは保存済みの設定を読む。
+ */
+export async function openSaveDir(saveDir?: string | null): Promise<void> {
+  const dir =
+    saveDir === undefined ? (await loadSettings().catch(() => DEFAULT_SETTINGS)).saveDir : saveDir
+  await invoke<string>('open_save_dir', { saveDir: dir })
 }

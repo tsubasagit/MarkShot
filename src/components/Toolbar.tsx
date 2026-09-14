@@ -1,6 +1,7 @@
 import React from 'react'
 import type { ToolType } from '../hooks/useAnnotation'
 import CaptureBar, { type CaptureMode } from './CaptureBar'
+import OpenSaveDirButton from './OpenSaveDirButton'
 
 interface ToolbarProps {
   tool: ToolType
@@ -357,6 +358,7 @@ const Toolbar: React.FC<ToolbarProps> = ({
 
       <div style={styles.spacer} />
 
+      <OpenSaveDirButton style={styles.iconBtn} />
       <button style={styles.cancelBtn} onClick={onCancel}>
         キャンセル
       </button>

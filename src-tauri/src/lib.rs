@@ -376,24 +376,49 @@ async fn save_gif(
     save_bytes_to_disk(&app, save_dir.as_deref(), &filename, &bytes)
 }
 
+/// 保存先フォルダを決める。設定が空なら Pictures/MarkShot。
+fn resolve_save_dir(app: &AppHandle, save_dir: Option<&str>) -> Result<std::path::PathBuf, String> {
+    match save_dir {
+        Some(custom) if !custom.trim().is_empty() => Ok(std::path::PathBuf::from(custom)),
+        _ => Ok(app
+            .path()
+            .picture_dir()
+            .map_err(|e| format!("picture_dir err: {e}"))?
+            .join("MarkShot")),
+    }
+}
+
 fn save_bytes_to_disk(
     app: &AppHandle,
     save_dir: Option<&str>,
     filename: &str,
     bytes: &[u8],
 ) -> Result<String, String> {
-    let dir = match save_dir {
-        Some(custom) if !custom.trim().is_empty() => std::path::PathBuf::from(custom),
-        _ => app
-            .path()
-            .picture_dir()
-            .map_err(|e| format!("picture_dir err: {e}"))?
-            .join("MarkShot"),
-    };
+    let dir = resolve_save_dir(app, save_dir)?;
     std::fs::create_dir_all(&dir).map_err(|e| format!("mkdir err: {e}"))?;
     let path = dir.join(filename);
     std::fs::write(&path, bytes).map_err(|e| format!("write err: {e}"))?;
     Ok(path.to_string_lossy().into_owned())
+}
+
+/// 現在の保存先フォルダをエクスプローラー（mac は Finder）で開く。開いたパスを返す。
+/// 既定の Pictures/MarkShot は初回保存まで存在しないので、無ければ作ってから開く。
+#[tauri::command]
+fn open_save_dir(app: AppHandle, save_dir: Option<String>) -> Result<String, String> {
+    let dir = resolve_save_dir(&app, save_dir.as_deref())?;
+    std::fs::create_dir_all(&dir).map_err(|e| format!("mkdir err: {e}"))?;
+    #[cfg(windows)]
+    let opener = "explorer";
+    #[cfg(target_os = "macos")]
+    let opener = "open";
+    #[cfg(all(unix, not(target_os = "macos")))]
+    let opener = "xdg-open";
+    // explorer.exe は開けても終了コード 1 を返すので、終了を待たず起動できたかだけ見る。
+    std::process::Command::new(opener)
+        .arg(&dir)
+        .spawn()
+        .map_err(|e| format!("open dir err: {e}"))?;
+    Ok(dir.to_string_lossy().into_owned())
 }
 
 #[tauri::command]
@@ -935,6 +960,7 @@ pub fn run() {
             overlay_painted,
             save_annotated_image,
             save_gif,
+            open_save_dir,
             overlay_gif_region_selected,
             stop_gif_recording,
             pause_gif_recording,

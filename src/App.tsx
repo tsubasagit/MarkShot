@@ -10,6 +10,7 @@ import RecordingControl from './components/RecordingControl'
 import CountdownOverlay from './components/CountdownOverlay'
 import CaptureBar from './components/CaptureBar'
 import SettingsPanel from './components/SettingsPanel'
+import OpenSaveDirButton from './components/OpenSaveDirButton'
 import AnnotationEditor from './components/AnnotationEditor'
 import { loadSettings, DEFAULT_SETTINGS } from './utils/settings'
 
@@ -298,6 +299,18 @@ function Placeholder() {
             編集
           </button>
         )}
+        <OpenSaveDirButton
+          style={{
+            background: '#1a1a2e',
+            border: '1px solid #2a2a4a',
+            color: '#b0b0d0',
+            borderRadius: 6,
+            padding: '6px 10px',
+            cursor: 'pointer',
+            display: 'flex',
+            alignItems: 'center',
+          }}
+        />
         <button
           onClick={() => setSettingsOpen(true)}
           title="設定"

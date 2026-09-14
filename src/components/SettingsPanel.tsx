@@ -4,6 +4,7 @@ import { open as openExternal } from '@tauri-apps/plugin-shell'
 import {
   loadSettings,
   saveSetting,
+  openSaveDir,
   DEFAULT_SETTINGS,
   type Settings,
 } from '../utils/settings'
@@ -205,6 +206,18 @@ const SettingsPanel: React.FC<SettingsPanelProps> = ({ onClose }) => {
                   value={settings.saveDir ?? '（未設定 → Pictures/MarkShot/）'}
                 />
                 <button style={s.btn} onClick={pickSaveDir}>参照</button>
+                <button
+                  style={s.btn}
+                  onClick={() =>
+                    openSaveDir(settings.saveDir).catch((e) => {
+                      console.error('open_save_dir failed', e)
+                      window.alert(`保存先フォルダを開けませんでした。\n${e}`)
+                    })
+                  }
+                  title="保存先フォルダをエクスプローラーで開く"
+                >
+                  開く
+                </button>
                 {settings.saveDir && (
                   <button style={s.btn} onClick={() => update('saveDir', null)}>
                     既定に戻す
@@ -219,7 +232,7 @@ const SettingsPanel: React.FC<SettingsPanelProps> = ({ onClose }) => {
           <div style={s.sectionTitle}>アプリ情報</div>
           <div style={{ display: 'flex', gap: 16, alignItems: 'center' }}>
             <div style={{ fontSize: 13, color: '#b0b0d0', lineHeight: 1.8, flex: 1 }}>
-              <div><span style={{ color: '#6c7086' }}>バージョン：</span>v2.1.4</div>
+              <div><span style={{ color: '#6c7086' }}>バージョン：</span>v2.1.5</div>
               <div><span style={{ color: '#6c7086' }}>作成者：</span>宮崎翼</div>
               <div>
                 <span style={{ color: '#6c7086' }}>お問い合わせ：</span>
