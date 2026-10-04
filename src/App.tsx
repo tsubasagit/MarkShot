@@ -1,7 +1,6 @@
-import React, { useState, useEffect } from 'react'
+import React, { useState, useEffect, useRef } from 'react'
 import { invoke } from '@tauri-apps/api/core'
 import { listen, type UnlistenFn } from '@tauri-apps/api/event'
-import { getCurrentWindow } from '@tauri-apps/api/window'
 import { register, unregister, isRegistered } from '@tauri-apps/plugin-global-shortcut'
 import { writeText as tauriWriteText } from '@tauri-apps/plugin-clipboard-manager'
 import RegionSelector from './components/RegionSelector'
@@ -13,6 +12,7 @@ import SettingsPanel from './components/SettingsPanel'
 import OpenSaveDirButton from './components/OpenSaveDirButton'
 import AnnotationEditor from './components/AnnotationEditor'
 import { loadSettings, DEFAULT_SETTINGS } from './utils/settings'
+import { isCopyPathShortcut } from './utils/shortcuts'
 
 type GifRegion = { x: number; y: number; w: number; h: number; scaleFactor: number }
 
@@ -197,16 +197,36 @@ function Placeholder() {
     })
   }
 
+  // 完了：編集後の画像を保存し、プレビューも保存先も編集後のものに差し替える。
+  // 以前はウィンドウを閉じようとしていたが、close 権限が無く失敗して
+  // 編集前の画像に戻っていた。
   const handleEditDone = async (editedDataUrl: string) => {
+    setCaptured(editedDataUrl)
+    setEditing(false)
     try {
-      await saveEditedImage(editedDataUrl)
-      await getCurrentWindow().close()
+      const path = await saveEditedImage(editedDataUrl, { forceSave: true })
+      setSavedPath(path)
+      setError(null)
     } catch (e) {
       console.error('save_annotated_image failed', e)
+      setSavedPath(null)
       setError(String(e))
-      setEditing(false)
     }
   }
+
+  // 保存先パスのコピーは画面下のボタンが隠れがちなので S / Ctrl+C でも呼べる
+  const copyPathRef = useRef(handleCopyPath)
+  copyPathRef.current = handleCopyPath
+  useEffect(() => {
+    if (editing) return
+    const handler = (e: KeyboardEvent) => {
+      if (!isCopyPathShortcut(e)) return
+      e.preventDefault()
+      copyPathRef.current()
+    }
+    window.addEventListener('keydown', handler)
+    return () => window.removeEventListener('keydown', handler)
+  }, [editing])
 
   const handleNewFromEditor = async (mode: 'screenshot' | 'gif', editedDataUrl: string) => {
     try {
@@ -432,7 +452,7 @@ function Placeholder() {
               </div>
               <button
                 onClick={handleCopyPath}
-                title="保存先パスをクリップボードにコピー"
+                title="保存先パスをクリップボードにコピー（S / Ctrl+C）"
                 style={{
                   padding: '4px 10px',
                   background: pathCopied ? '#22c55e' : '#538bb0',
@@ -452,7 +472,7 @@ function Placeholder() {
                   <rect x="9" y="9" width="13" height="13" rx="2" ry="2" />
                   <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1" />
                 </svg>
-                {pathCopied ? 'コピー済み' : 'パスをコピー'}
+                {pathCopied ? 'コピー済み' : 'パスをコピー (S)'}
               </button>
             </div>
           )}
