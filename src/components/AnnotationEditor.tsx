@@ -7,6 +7,7 @@ import Toolbar, { PALETTE, STROKE_PRESETS } from './Toolbar'
 import type { CaptureMode } from './CaptureBar'
 import { loadSettings, DEFAULT_SETTINGS } from '../utils/settings'
 import { isCopyPathShortcut } from '../utils/shortcuts'
+import CopiedToast from './CopiedToast'
 import {
   useAnnotation,
   generateId,
@@ -623,6 +624,7 @@ const AnnotationEditor: React.FC<AnnotationEditorProps> = ({
         {pathCopied ? 'コピー済み' : 'パスをコピー (S)'}
         </button>
       </div>
+      <CopiedToast show={pathCopied} />
     </div>
   )
 }

@@ -11,6 +11,7 @@ import CaptureBar from './components/CaptureBar'
 import SettingsPanel from './components/SettingsPanel'
 import OpenSaveDirButton from './components/OpenSaveDirButton'
 import AnnotationEditor from './components/AnnotationEditor'
+import CopiedToast from './components/CopiedToast'
 import { loadSettings, DEFAULT_SETTINGS } from './utils/settings'
 import { isCopyPathShortcut } from './utils/shortcuts'
 
@@ -354,6 +355,7 @@ function Placeholder() {
         </button>
       </div>
       {settingsOpen && <SettingsPanel onClose={() => setSettingsOpen(false)} />}
+      <CopiedToast show={pathCopied} />
       {captured ? (
         <div
           style={{
