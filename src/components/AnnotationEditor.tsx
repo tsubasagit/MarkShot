@@ -184,7 +184,7 @@ const AnnotationEditor: React.FC<AnnotationEditorProps> = ({
   }, [selectedId, removeAnnotation])
 
   // パスコピーのボタンは画面下にあり、ウィンドウが小さいと見えないため
-  // S / Ctrl+C でも同じ処理を呼べるようにする（テキスト入力中は除く）。
+  // C / Ctrl+C でも同じ処理を呼べるようにする（テキスト入力中は除く）。
   const copyEditedPathRef = useRef(handleCopyEditedPath)
   copyEditedPathRef.current = handleCopyEditedPath
   useEffect(() => {
@@ -600,7 +600,7 @@ const AnnotationEditor: React.FC<AnnotationEditorProps> = ({
         <button
           onClick={handleCopyEditedPath}
           disabled={!bgImage}
-          title="編集後の画像を保存し、そのパスをクリップボードにコピー（S / Ctrl+C）"
+          title="編集後の画像を保存し、そのパスをクリップボードにコピー（C / Ctrl+C）"
           style={{
             padding: '4px 10px',
             background: pathCopied ? '#22c55e' : '#538bb0',
@@ -621,7 +621,7 @@ const AnnotationEditor: React.FC<AnnotationEditorProps> = ({
             <rect x="9" y="9" width="13" height="13" rx="2" ry="2" />
             <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1" />
           </svg>
-        {pathCopied ? 'コピー済み' : 'パスをコピー (S)'}
+        {pathCopied ? 'コピー済み' : 'パスをコピー (C)'}
         </button>
       </div>
       <CopiedToast show={pathCopied} />
