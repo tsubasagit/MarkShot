@@ -46,11 +46,11 @@ export const MOSAIC_LEVELS: { label: string; value: number; cells: number }[] = 
   { label: '強', value: 32, cells: 2 },
 ]
 
-const TOOLS: { id: ToolType; label: string }[] = [
-  { id: 'select', label: '選択' },
-  { id: 'arrow', label: '矢印' },
-  { id: 'text', label: 'テキスト' },
-  { id: 'rect', label: '枠' },
+export const TOOLS: { id: ToolType; label: string; key?: string }[] = [
+  { id: 'select', label: '選択', key: 'V' },
+  { id: 'arrow', label: '矢印', key: 'A' },
+  { id: 'text', label: 'テキスト', key: 'T' },
+  { id: 'rect', label: '枠', key: 'R' },
   { id: 'pen', label: 'ペン' },
   { id: 'mosaic', label: 'モザイク' },
 ]
@@ -279,8 +279,8 @@ const Toolbar: React.FC<ToolbarProps> = ({
             key={t.id}
             style={{ ...styles.iconBtn, ...(tool === t.id ? styles.activeIcon : null) }}
             onClick={() => onToolChange(t.id)}
-            title={t.label}
-            aria-label={t.label}
+            title={t.key ? `${t.label} (${t.key})` : t.label}
+            aria-label={t.key ? `${t.label} (${t.key})` : t.label}
           >
             <ToolIcon type={t.id} />
           </button>
@@ -363,7 +363,7 @@ const Toolbar: React.FC<ToolbarProps> = ({
         キャンセル
       </button>
       <button style={styles.doneBtn} onClick={onDone}>
-        完了
+        完了 (E)
       </button>
     </div>
   )

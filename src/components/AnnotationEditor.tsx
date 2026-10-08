@@ -3,7 +3,7 @@ import { Stage, Layer, Image as KonvaImage, Arrow, Rect, Line, Text } from 'reac
 import Konva from 'konva'
 import { invoke } from '@tauri-apps/api/core'
 import { writeText as tauriWriteText } from '@tauri-apps/plugin-clipboard-manager'
-import Toolbar, { PALETTE, STROKE_PRESETS } from './Toolbar'
+import Toolbar, { PALETTE, STROKE_PRESETS, TOOLS } from './Toolbar'
 import type { CaptureMode } from './CaptureBar'
 import { loadSettings, DEFAULT_SETTINGS } from '../utils/settings'
 import { isCopyPathShortcut } from '../utils/shortcuts'
@@ -192,6 +192,37 @@ const AnnotationEditor: React.FC<AnnotationEditorProps> = ({
       if (!isCopyPathShortcut(e)) return
       e.preventDefault()
       copyEditedPathRef.current()
+    }
+    window.addEventListener('keydown', handler)
+    return () => window.removeEventListener('keydown', handler)
+  }, [])
+
+  // ツール切替: V=選択 / A=矢印 / T=テキスト / R=枠（テキスト入力中・修飾キー付きは除く）
+  useEffect(() => {
+    const handler = (e: KeyboardEvent) => {
+      if (e.repeat || e.isComposing || e.ctrlKey || e.metaKey || e.altKey || e.shiftKey) return
+      const t = e.target as HTMLElement | null
+      if (t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.isContentEditable)) return
+      const hit = TOOLS.find((x) => x.key?.toLowerCase() === e.key.toLowerCase())
+      if (!hit) return
+      e.preventDefault()
+      setTool(hit.id)
+      setSelectedId(null)
+    }
+    window.addEventListener('keydown', handler)
+    return () => window.removeEventListener('keydown', handler)
+  }, [])
+
+  // 完了ボタンも E 単体で押せるようにする（テキスト入力中・修飾キー付きは除く）。
+  const doneRef = useRef<() => void>(() => {})
+  useEffect(() => {
+    const handler = (e: KeyboardEvent) => {
+      if (e.key.toLowerCase() !== 'e' || e.repeat || e.isComposing) return
+      if (e.ctrlKey || e.metaKey || e.altKey || e.shiftKey) return
+      const t = e.target as HTMLElement | null
+      if (t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.isContentEditable)) return
+      e.preventDefault()
+      doneRef.current()
     }
     window.addEventListener('keydown', handler)
     return () => window.removeEventListener('keydown', handler)
@@ -402,6 +433,7 @@ const AnnotationEditor: React.FC<AnnotationEditorProps> = ({
   }
 
   const handleDone = () => exportEdited(onDone)
+  doneRef.current = handleDone
   const handleNew = (mode?: CaptureMode) =>
     exportEdited((dataUrl) => onNew(mode ?? captureMode, dataUrl))
 
