@@ -260,6 +260,26 @@ function Placeholder() {
     }
   }
 
+  // 起動直後の空画面：N でスクショ切り取り、G で GIF 録画を開始
+  const newCaptureRef = useRef(handleNewCapture)
+  newCaptureRef.current = handleNewCapture
+  useEffect(() => {
+    if (editing || captured || busy) return
+    const handler = (e: KeyboardEvent) => {
+      if (e.ctrlKey || e.metaKey || e.altKey || e.shiftKey || e.repeat) return
+      const t = e.target as HTMLElement | null
+      if (t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.isContentEditable)) return
+      const k = e.key.toLowerCase()
+      if (k !== 'n' && k !== 'g') return
+      e.preventDefault()
+      const mode = k === 'g' ? 'gif' : 'screenshot'
+      setCaptureMode(mode)
+      newCaptureRef.current(mode)
+    }
+    window.addEventListener('keydown', handler)
+    return () => window.removeEventListener('keydown', handler)
+  }, [editing, captured, busy])
+
   const isGif = !!captured && captured.startsWith('data:image/gif')
 
   if (editing && captured) {
@@ -488,7 +508,8 @@ function Placeholder() {
           </svg>
           <h2>MarkShot</h2>
           <p>
-            <strong>New</strong> ボタン / <strong>Ctrl+Shift+S</strong> で範囲選択開始<br />
+            <strong>N</strong>：スクショ切り取り ／ <strong>G</strong>：GIF録画<br />
+            <strong>New</strong> ボタン / <strong>Ctrl+Shift+S</strong> でも範囲選択開始<br />
             ドラッグで範囲指定 → クリップボードに PNG コピー<br />
             Esc / 右クリックでキャンセル
           </p>
