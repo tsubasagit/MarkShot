@@ -440,7 +440,12 @@ fn overlay_painted() {}
 
 const GIF_FPS: u32 = 10;
 const GIF_MAX_SECONDS: u32 = 60;
-const GIF_MAX_WIDTH: u32 = 800;
+/// これを超える幅の範囲だけ縮小する。以前は 800 で、高 DPI 画面では文字がつぶれていた。
+const GIF_MAX_WIDTH: u32 = 1920;
+/// 減色（NeuQuant）で学習に使う画素数の目安。範囲が広いほど間引きを強くして速度を保つ。
+const GIF_QUANT_SAMPLE_BUDGET: usize = 150_000;
+/// キャプチャ→エンコード間に溜められるフレーム数（1 枚 = 幅×高さ×4 バイト）。
+const GIF_FRAME_QUEUE: usize = 8;
 
 #[derive(serde::Serialize, Clone)]
 #[serde(rename_all = "camelCase")]
@@ -850,60 +855,185 @@ fn record_gif(
 
     let max_frames = GIF_FPS * GIF_MAX_SECONDS;
     let frame_delay = Duration::from_millis((1000 / GIF_FPS) as u64);
-    let gif_delay_cs = (100 / GIF_FPS) as u16; // 1/100 秒単位
 
     // キャプチャ範囲左上の仮想デスクトップ物理座標（カーソル合成の基準）。
     let abs_left = screen.display_info.x + x;
     let abs_top = screen.display_info.y + y;
 
+    // 減色は重いので別スレッドで行い、キャプチャの間隔を乱さない。
+    let (tx, rx) = std::sync::mpsc::sync_channel::<(Vec<u8>, Duration)>(GIF_FRAME_QUEUE);
+    let encoder_thread =
+        std::thread::spawn(move || encode_gif_frames(rx, out_w, out_h, frame_delay));
+
+    // 一時停止中の時間を除いた録画時刻（GIF の表示時間はこれの差から決める）。
+    let start = Instant::now();
+    let mut paused_total = Duration::ZERO;
+    let mut pause_started: Option<Instant> = None;
+
+    let mut frames = 0u32;
+    let mut capture_err: Option<String> = None;
+    while !stop.load(Ordering::Acquire) && frames < max_frames {
+        if paused.load(Ordering::Acquire) {
+            pause_started.get_or_insert_with(Instant::now);
+            std::thread::sleep(Duration::from_millis(50));
+            continue;
+        }
+        if let Some(p) = pause_started.take() {
+            paused_total += p.elapsed();
+        }
+        let tick_start = Instant::now();
+        let t = tick_start.duration_since(start).saturating_sub(paused_total);
+
+        let mut captured = match screen.capture_area(x, y, width, height) {
+            Ok(c) => c,
+            Err(e) => {
+                capture_err = Some(format!("capture_area err: {e}"));
+                break;
+            }
+        };
+
+        // OS カーソルはキャプチャに含まれないため、リサイズ前のフレームに描き込む。
+        #[cfg(windows)]
+        composite_cursor(&mut captured, abs_left, abs_top);
+
+        let raw = if out_w != width || out_h != height {
+            screenshots::image::imageops::resize(&captured, out_w, out_h, FilterType::Lanczos3)
+                .into_raw()
+        } else {
+            captured.into_raw()
+        };
+
+        if tx.send((raw, t)).is_err() {
+            break; // エンコーダ側が失敗して終了している
+        }
+        frames += 1;
+
+        let elapsed = tick_start.elapsed();
+        if elapsed < frame_delay {
+            std::thread::sleep(frame_delay - elapsed);
+        }
+    }
+    drop(tx);
+    eprintln!("[gif] captured {frames} frames ({out_w}x{out_h})");
+
+    let encoded = encoder_thread
+        .join()
+        .map_err(|_| "gif encoder thread panicked".to_string())?;
+    if let Some(e) = capture_err {
+        return Err(e);
+    }
+    encoded
+}
+
+/// 受け取ったフレームを GIF にエンコードする。
+/// - 前フレームから変わった矩形だけを書く（同じ画面が続く間はフレームを足さず表示時間を延ばす）
+/// - 256 色以内の範囲は無劣化のパレット、それを超える範囲だけ NeuQuant で減色する
+fn encode_gif_frames(
+    rx: std::sync::mpsc::Receiver<(Vec<u8>, Duration)>,
+    w: u32,
+    h: u32,
+    frame_delay: Duration,
+) -> Result<Vec<u8>, String> {
+    // 表示時間は 1/100 秒単位。累積時刻を丸めてから差を取り、誤差を溜めない。
+    let cs = |t: Duration| (t.as_millis() / 10) as u64;
+
     let mut buf: Vec<u8> = Vec::new();
     {
-        let mut encoder = gif::Encoder::new(&mut buf, out_w as u16, out_h as u16, &[])
+        let mut encoder = gif::Encoder::new(&mut buf, w as u16, h as u16, &[])
             .map_err(|e| format!("gif encoder err: {e}"))?;
         encoder
             .set_repeat(gif::Repeat::Infinite)
             .map_err(|e| e.to_string())?;
 
-        let mut frames = 0u32;
-        while !stop.load(Ordering::Acquire) && frames < max_frames {
-            if paused.load(Ordering::Acquire) {
-                std::thread::sleep(Duration::from_millis(50));
-                continue;
-            }
-            let tick_start = Instant::now();
+        let mut prev: Option<Vec<u8>> = None;
+        // 表示時間が次のフレーム到着まで決まらないので 1 枚持っておく。
+        let mut pending: Option<(gif::Frame<'static>, Duration)> = None;
+        let mut last_t = Duration::ZERO;
+        let mut written = 0u32;
 
-            let mut captured = screen
-                .capture_area(x, y, width, height)
-                .map_err(|e| format!("capture_area err: {e}"))?;
-
-            // OS カーソルはキャプチャに含まれないため、リサイズ前のフレームに描き込む。
-            #[cfg(windows)]
-            composite_cursor(&mut captured, abs_left, abs_top);
-
-            let mut raw = if out_w != width || out_h != height {
-                screenshots::image::imageops::resize(&captured, out_w, out_h, FilterType::Triangle)
-                    .into_raw()
-            } else {
-                captured.into_raw()
-            };
-
-            let mut frame =
-                gif::Frame::from_rgba_speed(out_w as u16, out_h as u16, &mut raw, 10);
-            frame.delay = gif_delay_cs;
+        let mut flush = |encoder: &mut gif::Encoder<&mut Vec<u8>>,
+                         mut f: gif::Frame<'static>,
+                         t0: Duration,
+                         t1: Duration|
+         -> Result<(), String> {
+            // 1/100 秒以下はブラウザが 0.1 秒扱いにするため最低 2 にする。
+            f.delay = (cs(t1).saturating_sub(cs(t0))).clamp(2, u16::MAX as u64) as u16;
+            written += 1;
             encoder
-                .write_frame(&frame)
-                .map_err(|e| format!("write_frame err: {e}"))?;
-            frames += 1;
+                .write_frame(&f)
+                .map_err(|e| format!("write_frame err: {e}"))
+        };
 
-            let elapsed = tick_start.elapsed();
-            if elapsed < frame_delay {
-                std::thread::sleep(frame_delay - elapsed);
+        for (rgba, t) in rx {
+            last_t = t;
+            let rect = match &prev {
+                None => Some((0, 0, w, h)),
+                Some(p) => dirty_rect(p, &rgba, w, h),
+            };
+            let Some((rx0, ry0, rw, rh)) = rect else {
+                continue; // 変化なし：前のフレームの表示時間を延ばすだけ
+            };
+            if let Some((f, t0)) = pending.take() {
+                flush(&mut encoder, f, t0, t)?;
             }
+            let mut sub = crop_rgba(&rgba, w, rx0, ry0, rw, rh);
+            let px = (rw * rh) as usize;
+            let speed = px.div_ceil(GIF_QUANT_SAMPLE_BUDGET).clamp(1, 30) as i32;
+            let mut f = gif::Frame::from_rgba_speed(rw as u16, rh as u16, &mut sub, speed);
+            f.left = rx0 as u16;
+            f.top = ry0 as u16;
+            f.dispose = gif::DisposalMethod::Keep;
+            pending = Some((f, t));
+            prev = Some(rgba);
         }
-        eprintln!("[gif] captured {frames} frames ({out_w}x{out_h})");
+        if let Some((f, t0)) = pending.take() {
+            flush(&mut encoder, f, t0, last_t + frame_delay)?;
+        }
+        eprintln!("[gif] encoded {written} frames");
     } // encoder drop でトレーラ書き出し
 
     Ok(buf)
+}
+
+/// 2 枚の RGBA フレームで画素が違う最小の矩形 (x, y, w, h)。同一なら None。
+fn dirty_rect(a: &[u8], b: &[u8], w: u32, h: u32) -> Option<(u32, u32, u32, u32)> {
+    let stride = (w * 4) as usize;
+    let row = |y: u32| -> std::ops::Range<usize> {
+        let s = y as usize * stride;
+        s..s + stride
+    };
+    let differs = |y: u32| a[row(y)] != b[row(y)];
+    let top = (0..h).find(|&y| differs(y))?;
+    let bottom = (top..h).rev().find(|&y| differs(y)).unwrap_or(top);
+
+    let px = |buf: &[u8], y: u32, x: u32| {
+        let i = y as usize * stride + x as usize * 4;
+        [buf[i], buf[i + 1], buf[i + 2], buf[i + 3]]
+    };
+    let (mut left, mut right) = (w, 0u32);
+    for y in top..=bottom {
+        if let Some(x) = (0..left).find(|&x| px(a, y, x) != px(b, y, x)) {
+            left = x;
+        }
+        if let Some(x) = (right..w).rev().find(|&x| px(a, y, x) != px(b, y, x)) {
+            right = right.max(x);
+        }
+    }
+    if left > right {
+        return None;
+    }
+    Some((left, top, right - left + 1, bottom - top + 1))
+}
+
+/// RGBA フレームから矩形を切り出す。
+fn crop_rgba(src: &[u8], src_w: u32, x: u32, y: u32, w: u32, h: u32) -> Vec<u8> {
+    let stride = (src_w * 4) as usize;
+    let mut out = Vec::with_capacity((w * h * 4) as usize);
+    for row in y..y + h {
+        let s = row as usize * stride + x as usize * 4;
+        out.extend_from_slice(&src[s..s + (w * 4) as usize]);
+    }
+    out
 }
 
 #[tauri::command]
@@ -968,4 +1098,117 @@ pub fn run() {
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
+}
+
+#[cfg(test)]
+mod gif_tests {
+    use super::*;
+
+    fn solid(w: u32, h: u32, c: [u8; 4]) -> Vec<u8> {
+        c.iter().copied().cycle().take((w * h * 4) as usize).collect()
+    }
+
+    #[test]
+    fn dirty_rect_finds_changed_box() {
+        let (w, h) = (20, 10);
+        let a = solid(w, h, [255, 255, 255, 255]);
+        assert_eq!(dirty_rect(&a, &a, w, h), None);
+        let mut b = a.clone();
+        for (x, y) in [(3u32, 2u32), (7, 5)] {
+            let i = ((y * w + x) * 4) as usize;
+            b[i] = 0;
+        }
+        assert_eq!(dirty_rect(&a, &b, w, h), Some((3, 2, 5, 4)));
+    }
+
+    /// 変化した矩形だけ書いても、デコード結果は元の画面と一致する（色数 256 以内なので無劣化）。
+    #[test]
+    fn encode_roundtrip_is_lossless_for_few_colors() {
+        let (w, h) = (64u32, 32u32);
+        let mut f1 = solid(w, h, [255, 255, 255, 255]);
+        for x in 0..w {
+            let i = ((10 * w + x) * 4) as usize;
+            f1[i..i + 4].copy_from_slice(&[(x * 4) as u8, 0, 128, 255]);
+        }
+        let mut f2 = f1.clone();
+        let i = ((20 * w + 30) * 4) as usize;
+        f2[i..i + 4].copy_from_slice(&[0, 0, 0, 255]);
+
+        let (tx, rx) = std::sync::mpsc::sync_channel(8);
+        tx.send((f1.clone(), Duration::from_millis(0))).unwrap();
+        tx.send((f1.clone(), Duration::from_millis(100))).unwrap(); // 同じ画面 → 足さない
+        tx.send((f2.clone(), Duration::from_millis(200))).unwrap();
+        drop(tx);
+        let bytes = encode_gif_frames(rx, w, h, Duration::from_millis(100)).unwrap();
+
+        let mut opts = gif::DecodeOptions::new();
+        opts.set_color_output(gif::ColorOutput::RGBA);
+        let mut dec = opts.read_info(std::io::Cursor::new(bytes)).unwrap();
+        let mut canvas = vec![0u8; (w * h * 4) as usize];
+        let mut delays = vec![];
+        let mut canvases = vec![];
+        while let Some(fr) = dec.read_next_frame().unwrap() {
+            delays.push(fr.delay);
+            for yy in 0..fr.height as u32 {
+                for xx in 0..fr.width as u32 {
+                    let s = ((yy * fr.width as u32 + xx) * 4) as usize;
+                    let d = (((yy + fr.top as u32) * w + xx + fr.left as u32) * 4) as usize;
+                    canvas[d..d + 4].copy_from_slice(&fr.buffer[s..s + 4]);
+                }
+            }
+            canvases.push(canvas.clone());
+        }
+        assert_eq!(delays, vec![20, 10]);
+        assert_eq!(canvases[0], f1);
+        assert_eq!(canvases[1], f2);
+    }
+}
+
+#[cfg(test)]
+mod gif_live_bench {
+    use super::*;
+
+    /// 実画面を 3 秒録って GIF を書き出す（手動確認用）。
+    /// MARKSHOT_GIF_OUT=出力先 cargo test --release --lib gif_live_bench -- --ignored --nocapture
+    #[test]
+    #[ignore]
+    fn record_real_screen() {
+        let screen = Screen::all().unwrap().into_iter().max_by_key(|s| s.display_info.width).unwrap();
+        let (w, h) = (screen.display_info.width, screen.display_info.height);
+        let stop = Arc::new(AtomicBool::new(false));
+        let paused = AtomicBool::new(false);
+        let s2 = stop.clone();
+        std::thread::spawn(move || {
+            std::thread::sleep(Duration::from_secs(3));
+            s2.store(true, Ordering::Release);
+        });
+        let t = Instant::now();
+        let bytes = record_gif(screen, 0, 0, w, h, &stop, &paused).unwrap();
+        eprintln!("{w}x{h}: {} bytes, total {:?}", bytes.len(), t.elapsed());
+        std::fs::write(std::env::var("MARKSHOT_GIF_OUT").unwrap(), bytes).unwrap();
+    }
+
+    /// 画面全体が毎フレーム変わる最悪ケース（スクロール）のエンコード速度。
+    #[test]
+    #[ignore]
+    fn encode_full_change_speed() {
+        let screen = Screen::all().unwrap().into_iter().max_by_key(|s| s.display_info.width).unwrap();
+        let (w, h) = (screen.display_info.width, screen.display_info.height);
+        let base = screen.capture_area(0, 0, w, h).unwrap().into_raw();
+        let stride = (w * 4) as usize;
+        let (tx, rx) = std::sync::mpsc::sync_channel(64);
+        for i in 0..20u32 {
+            let shift = (i * 7) as usize * stride;
+            let mut f = base[shift..].to_vec();
+            f.extend_from_slice(&base[..shift]);
+            tx.send((f, Duration::from_millis(i as u64 * 100))).unwrap();
+        }
+        drop(tx);
+        let t = Instant::now();
+        let bytes = encode_gif_frames(rx, w, h, Duration::from_millis(100)).unwrap();
+        if let Ok(out) = std::env::var("MARKSHOT_GIF_OUT") {
+            std::fs::write(out, &bytes).unwrap();
+        }
+        eprintln!("full-change 20 frames {w}x{h}: {:?} ({:?}/frame), {} bytes", t.elapsed(), t.elapsed() / 20, bytes.len());
+    }
 }
